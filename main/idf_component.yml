@@ -1,0 +1,8 @@
+dependencies:
+  idf: ">=5.1"
+  # LVGL - UI library
+  lvgl/lvgl: "^8.3"
+  # GC9A01 display driver (esp_lcd based)
+  espressif/esp_lcd_gc9a01: "^2.0.4"
+  # TODO: add the touch driver once we know whether a CHSC6X or CST816S
+  # is fitted (see the "First I2C bus diagnosis" step in our roadmap)
