@@ -34,16 +34,22 @@ typedef enum {
 } pet_mood_t;
 
 /**
- * @brief Everything the pet is, in four numbers.
+ * @brief Everything the pet is.
  *
- * The single source of truth. Sprites, moods and status bars are all derived
- * from it, and storage_nvs_save() persists exactly this struct across reboots.
+ * The three stats are the single source of truth: sprites, moods and status
+ * bars are all derived from them. The carry fields are bookkeeping for
+ * pet_tick() so that no elapsed time is lost between calls.
+ * storage_nvs_save() persists exactly this struct across reboots.
  */
 typedef struct {
   uint8_t hunger;       /*!< 0 = full, 100 = very hungry. */
   uint8_t energy;       /*!< 0 = exhausted, 100 = well rested. */
   uint8_t happiness;    /*!< 0 = sad, 100 = happy. */
   uint32_t age_seconds; /*!< Total lifetime; keeps counting across reboots. */
+  uint16_t hunger_carry_s; /*!< Seconds not yet turned into a hunger point. */
+  uint16_t energy_carry_s; /*!< Seconds not yet turned into an energy point. */
+  uint16_t
+      happiness_carry_s; /*!< Seconds not yet turned into a happiness point. */
 } pet_state_t;
 
 /**
