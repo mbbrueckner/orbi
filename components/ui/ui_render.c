@@ -7,7 +7,7 @@ void ui_render_init(void)
 {
 }
 
-void ui_render_update(const tamagotchi_state_t *state)
+void ui_render_update(const pet_state_t *state)
 {
     (void)state;
 }

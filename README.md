@@ -1,6 +1,6 @@
 # orbi
 
-DIY Tamagotchi on a Seeed XIAO ESP32-C6 + Seeed Round Display for XIAO (1.28",
+DIY virtual pet (Tamagotchi-inspired) on a Seeed XIAO ESP32-C6 + Seeed Round Display for XIAO (1.28",
 GC9A01, touch), built with ESP-IDF in plain C.
 
 ## Status
@@ -12,14 +12,14 @@ GC9A01, touch), built with ESP-IDF in plain C.
 - [ ] LVGL integrated, demo widget visible
 - [ ] PC simulator (SDL2) set up
 - [ ] Touch registered with LVGL
-- [ ] tamagotchi_core done + tested
+- [ ] pet_core done + tested
 - [ ] UI/sprites done
 - [ ] Persistence (NVS) done
 - [ ] Final assembly (soldering, battery)
 
 ## Structure
 
-- `components/tamagotchi_core/` – pure game logic, hardware independent
+- `components/pet_core/` – pure game logic, hardware independent
 - `components/ui/` – LVGL rendering, sprites
 - `components/input/` – touch driver
 - `components/storage/` – NVS persistence

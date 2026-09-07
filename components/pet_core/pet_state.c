@@ -1,8 +1,8 @@
-#include "tamagotchi_state.h"
+#include "pet_state.h"
 
 #define CLAMP(v, lo, hi) ((v) < (lo) ? (lo) : ((v) > (hi) ? (hi) : (v)))
 
-void tamagotchi_state_init(tamagotchi_state_t *state)
+void pet_init(pet_state_t *state)
 {
     state->hunger = 20;
     state->energy = 100;
@@ -10,7 +10,7 @@ void tamagotchi_state_init(tamagotchi_state_t *state)
     state->age_seconds = 0;
 }
 
-void tamagotchi_state_tick(tamagotchi_state_t *state, uint32_t elapsed_seconds)
+void pet_tick(pet_state_t *state, uint32_t elapsed_seconds)
 {
     // TODO: define real decay rates, these are just placeholder values for now
     state->age_seconds += elapsed_seconds;
@@ -22,18 +22,18 @@ void tamagotchi_state_tick(tamagotchi_state_t *state, uint32_t elapsed_seconds)
     state->energy = CLAMP((int)state->energy - energy_delta, 0, 100);
 }
 
-void tamagotchi_feed(tamagotchi_state_t *state)
+void pet_feed(pet_state_t *state)
 {
     state->hunger = CLAMP((int)state->hunger - 30, 0, 100);
 }
 
-void tamagotchi_play(tamagotchi_state_t *state)
+void pet_play(pet_state_t *state)
 {
     state->happiness = CLAMP(state->happiness + 20, 0, 100);
     state->energy = CLAMP((int)state->energy - 10, 0, 100);
 }
 
-void tamagotchi_sleep(tamagotchi_state_t *state, bool sleeping)
+void pet_sleep(pet_state_t *state, bool sleeping)
 {
     // TODO: flesh out the sleep logic (e.g. faster energy recovery while asleep)
     if (sleeping) {
@@ -41,16 +41,16 @@ void tamagotchi_sleep(tamagotchi_state_t *state, bool sleeping)
     }
 }
 
-tamagotchi_mood_t tamagotchi_get_mood(const tamagotchi_state_t *state)
+pet_mood_t pet_get_mood(const pet_state_t *state)
 {
     if (state->hunger > 70) {
-        return TAMAGOTCHI_MOOD_HUNGRY;
+        return PET_MOOD_HUNGRY;
     }
     if (state->energy < 20) {
-        return TAMAGOTCHI_MOOD_TIRED;
+        return PET_MOOD_TIRED;
     }
     if (state->happiness < 30) {
-        return TAMAGOTCHI_MOOD_SAD;
+        return PET_MOOD_SAD;
     }
-    return TAMAGOTCHI_MOOD_HAPPY;
+    return PET_MOOD_HAPPY;
 }

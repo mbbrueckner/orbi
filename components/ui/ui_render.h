@@ -1,6 +1,6 @@
 #pragma once
 
-#include "tamagotchi_state.h"
+#include "pet_state.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -10,7 +10,7 @@ extern "C" {
 void ui_render_init(void);
 
 // Update the screen from the current state (sprite selection per mood)
-void ui_render_update(const tamagotchi_state_t *state);
+void ui_render_update(const pet_state_t *state);
 
 #ifdef __cplusplus
 }
