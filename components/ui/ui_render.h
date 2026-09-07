@@ -1,3 +1,11 @@
+/**
+ * @file ui_render.h
+ * @brief Draws the pet on the round GC9A01 display using LVGL.
+ *
+ * The only component that knows what the pet looks like. It reads pet_state_t
+ * but never modifies it, so the game rules stay independent of the display.
+ */
+
 #pragma once
 
 #include "pet_state.h"
@@ -6,11 +14,23 @@
 extern "C" {
 #endif
 
-// TODO: display + LVGL initialization (esp_lcd_gc9a01 + flush callback)
+/**
+ * @brief Brings up the display and LVGL.
+ *
+ * Call once at startup, before any call to ui_render_update().
+ *
+ * @todo Display + LVGL initialization (esp_lcd_gc9a01 + flush callback).
+ */
 void ui_render_init(void);
 
-// Update the screen from the current state (sprite selection per mood)
-void ui_render_update(const pet_state_t *state);
+/**
+ * @brief Redraws the screen to match the current state.
+ *
+ * Picks the sprite from pet_get_mood() and refreshes the status bars.
+ *
+ * @param state State to render. Not modified.
+ */
+void ui_render_update(const pet_state_t* state);
 
 #ifdef __cplusplus
 }

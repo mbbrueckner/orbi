@@ -1,3 +1,9 @@
+/**
+ * @file main.c
+ * @brief Application entry point: wires the components together and runs the
+ *        main loop.
+ */
+
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -8,8 +14,15 @@
 // #include "input_touch.h"
 // #include "storage_nvs.h"
 
+/** Tag prefixed to every log line from this file. */
 static const char* TAG = "orbi";
 
+/**
+ * @brief ESP-IDF entry point, called by the FreeRTOS startup task.
+ *
+ * Unlike a plain main(), this must not return: the task it runs in would be
+ * torn down. Hence the endless loop at the end.
+ */
 void app_main(void) {
   ESP_LOGI(TAG, "orbi starting...");
 
