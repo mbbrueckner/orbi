@@ -157,6 +157,27 @@ static void test_happiness_decays(void) {
 }
 
 /**
+ * @brief Checks that a very long absence saturates the stats instead of
+ *        wrapping them around.
+ *
+ * This is the overnight case: the device was off, so pet_tick() gets a single
+ * call with a huge span. Every stat has to stop at its limit. Doing the
+ * arithmetic in unsigned types would make a starved pet come out at 100.
+ */
+static void test_long_absence(void) {
+  printf("test_long_absence\n");
+  pet_state_t pet;
+  pet_init(&pet);
+
+  pet_tick(&pet, 100000);  // a bit over 27 hours
+
+  print_state("after 27h", &pet);
+  CHECK_EQ(pet.hunger, 100, "hunger saturates at 100");
+  CHECK_EQ(pet.energy, 0, "energy bottoms out at 0");
+  CHECK_EQ(pet.happiness, 0, "happiness bottoms out at 0");
+}
+
+/**
  * @brief Prints a readable trace of the three interactions.
  *
  * Asserts nothing; this is a scratchpad for balancing the decay rates by eye.
@@ -185,6 +206,7 @@ int main(void) {
   test_init_values();
   test_tick_is_additive();
   test_happiness_decays();
+  test_long_absence();
   demo_interactions();
 
   printf("\n%d check(s) failed\n", failures);
