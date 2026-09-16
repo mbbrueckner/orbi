@@ -32,12 +32,14 @@ static int failures = 0;
  * @param state State to print. Not modified.
  */
 static void print_state(const char* label, const pet_state_t* state) {
-  printf("    %-14s hunger=%3u  energy=%3u  happiness=%3u  age=%u\n",
-         label,
-         state->hunger,
-         state->energy,
-         state->happiness,
-         state->age_seconds);
+  printf(
+      "    %-14s hunger=%3u  energy=%3u  happiness=%3u  age=%-6u sleeping=%d\n",
+      label,
+      state->hunger,
+      state->energy,
+      state->happiness,
+      state->age_seconds,
+      state->sleeping);
 }
 
 /**
@@ -177,6 +179,27 @@ static void test_long_absence(void) {
   CHECK_EQ(pet.happiness, 0, "happiness bottoms out at 0");
 }
 
+static void test_sleep(void) {
+  printf("test_sleep\n");
+  pet_state_t pet;
+  pet_init(&pet);
+
+  pet_tick(&pet, 900);
+  CHECK_EQ(pet.hunger, 35, "awake 15 min: hunger 20 + 900/60");
+  CHECK_EQ(pet.energy, 93, "awake 15 min: energy 100 - 900/120");
+  CHECK_EQ(pet.happiness, 75, "awake 15 min: happiness 80 - 900/180");
+  CHECK_EQ(pet.sleeping, false, "a fresh pet is awake");
+
+  pet_sleep(&pet, true);
+  CHECK_EQ(pet.sleeping, true, "pet_sleep stores the flag");
+
+  pet_tick(&pet, 900);
+  CHECK_EQ(pet.age_seconds, 1800, "age keeps counting while asleep");
+  CHECK_EQ(pet.hunger, 36, "asleep 15 min: hunger only 900/600");
+  CHECK_EQ(pet.happiness, 74, "asleep 15 min: happiness only 900/900");
+  CHECK_EQ(pet.energy, 100, "asleep 15 min: energy recovers to full");
+}
+
 /**
  * @brief Prints a readable trace of the three interactions.
  *
@@ -202,12 +225,52 @@ static void demo_interactions(void) {
  * @return 0 when all checks passed, 1 otherwise, so the shell and any future
  *         CI can tell success from failure.
  */
+static void test_sleep_button_is_not_free(void) {
+  printf("test_sleep_button_is_not_free\n");
+
+  // Asleep: tapping "sleep" again must not slow anything down.
+  pet_state_t honest;
+  pet_state_t spammer;
+  pet_init(&honest);
+  pet_init(&spammer);
+  pet_sleep(&honest, true);
+  pet_sleep(&spammer, true);
+  for (int i = 0; i < 100; i++) {
+    pet_tick(&honest, 300);
+    pet_tick(&spammer, 300);
+    pet_sleep(&spammer, true);
+  }
+  CHECK_EQ(spammer.hunger,
+           honest.hunger,
+           "asleep: tapping sleep does not stop hunger");
+  CHECK_EQ(spammer.happiness,
+           honest.happiness,
+           "asleep: tapping sleep does not stop the happiness decay");
+
+  // Awake: the same trick with the wake call.
+  pet_state_t quiet;
+  pet_state_t tapper;
+  pet_init(&quiet);
+  pet_init(&tapper);
+  for (int i = 0; i < 300; i++) {
+    pet_tick(&quiet, 30);
+    pet_tick(&tapper, 30);
+    pet_sleep(&tapper, false);
+  }
+  CHECK_EQ(
+      tapper.hunger, quiet.hunger, "awake: tapping wake does not stop hunger");
+  CHECK_EQ(tapper.happiness,
+           quiet.happiness,
+           "awake: tapping wake does not stop the happiness decay");
+}
+
 int main(void) {
   test_init_values();
   test_tick_is_additive();
   test_happiness_decays();
   test_long_absence();
-  demo_interactions();
+  test_sleep();
+  test_sleep_button_is_not_free();
 
   printf("\n%d check(s) failed\n", failures);
   return failures == 0 ? 0 : 1;
