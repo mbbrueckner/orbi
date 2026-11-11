@@ -7,6 +7,7 @@ set(CMAKE_C_STANDARD_REQUIRED ON)
 add_executable(orbi_test
     test_main.c
     ../components/pet_core/pet_state.c
+    ../components/pet_core/tick_scheduler.c
 )
 
 target_include_directories(orbi_test PRIVATE

@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "pet_state.h"
+#include "tick_scheduler.h"
 
 /** Number of failed checks, turned into the process exit code by main(). */
 static int failures = 0;
@@ -264,6 +265,69 @@ static void test_sleep_button_is_not_free(void) {
            "awake: tapping wake does not stop the happiness decay");
 }
 
+/** @brief Checks that the scheduler turns timestamps into pet_tick() calls. */
+static void test_scheduler(void) {
+  printf("test_scheduler\n");
+
+  // Normal advance: 60 s awake is one hunger point.
+  pet_state_t pet;
+  tick_scheduler_t sched;
+  pet_init(&pet);
+  tick_scheduler_init(&sched, 1000);
+  uint32_t applied = tick_scheduler_update(&sched, &pet, 1060);
+  CHECK_EQ(applied, 60, "returns the seconds applied");
+  CHECK_EQ(pet.hunger, 21, "60 s advances hunger by 1");
+
+  // No time passed.
+  pet_state_t before = pet;
+  applied = tick_scheduler_update(&sched, &pet, 1060);
+  CHECK_EQ(applied, 0, "same timestamp applies nothing");
+  CHECK_EQ(pet.age_seconds, before.age_seconds, "same timestamp: age unchanged");
+
+  // Clock goes backwards: no underflow, resync to the new time.
+  before = pet;
+  applied = tick_scheduler_update(&sched, &pet, 500);
+  CHECK_EQ(applied, 0, "backwards clock applies nothing");
+  CHECK_EQ(pet.hunger, before.hunger, "backwards clock: hunger unchanged");
+  CHECK_EQ(pet.age_seconds, before.age_seconds, "backwards clock: age unchanged");
+  applied = tick_scheduler_update(&sched, &pet, 560);
+  CHECK_EQ(applied, 60, "ticks from the new baseline after a resync");
+
+  // Long absence matches a direct pet_tick() with the same span.
+  pet_state_t via_sched;
+  pet_state_t direct;
+  pet_init(&via_sched);
+  pet_init(&direct);
+  tick_scheduler_init(&sched, 0);
+  tick_scheduler_update(&sched, &via_sched, 100000);
+  pet_tick(&direct, 100000);
+  CHECK_EQ(via_sched.hunger, direct.hunger, "long absence: hunger matches");
+  CHECK_EQ(via_sched.energy, direct.energy, "long absence: energy matches");
+  CHECK_EQ(via_sched.happiness,
+           direct.happiness,
+           "long absence: happiness matches");
+
+  // Many small updates equal one big update (carries survive).
+  pet_state_t small_steps;
+  pet_state_t one_step;
+  pet_init(&small_steps);
+  pet_init(&one_step);
+  tick_scheduler_init(&sched, 0);
+  for (uint32_t t = 7; t <= 7000; t += 7) {
+    tick_scheduler_update(&sched, &small_steps, t);
+  }
+  tick_scheduler_init(&sched, 0);
+  tick_scheduler_update(&sched, &one_step, 7000);
+  CHECK_EQ(small_steps.hunger, one_step.hunger, "small steps: hunger matches");
+  CHECK_EQ(small_steps.energy, one_step.energy, "small steps: energy matches");
+  CHECK_EQ(small_steps.happiness,
+           one_step.happiness,
+           "small steps: happiness matches");
+  CHECK_EQ(small_steps.age_seconds,
+           one_step.age_seconds,
+           "small steps: age matches");
+}
+
 int main(void) {
   test_init_values();
   test_tick_is_additive();
@@ -271,6 +335,7 @@ int main(void) {
   test_long_absence();
   test_sleep();
   test_sleep_button_is_not_free();
+  test_scheduler();
 
   printf("\n%d check(s) failed\n", failures);
   return failures == 0 ? 0 : 1;
