@@ -7,6 +7,7 @@
 #include "esp_log.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
+#include "ui_render.h"
 
 // TODO: include the individual modules once they exist:
 // #include "pet_state.h"
@@ -25,6 +26,14 @@ static const char* TAG = "orbi";
  */
 void app_main(void) {
   ESP_LOGI(TAG, "orbi starting...");
+
+  // Temporary display test: cycle red, green, blue.
+  ui_render_init();
+  const uint16_t colors[] = {0xF800, 0x07E0, 0x001F};
+  for (int i = 0; i < 3; i++) {
+    ui_render_fill(colors[i]);
+    vTaskDelay(pdMS_TO_TICKS(1000));
+  }
 
   // TODO order according to the roadmap:
   // 1. storage_nvs_init() + load the persisted state
