@@ -5,10 +5,10 @@ GC9A01, touch), built with ESP-IDF in plain C.
 
 ## Status
 
-- [ ] ESP-IDF toolchain installed
-- [ ] Board boots (hello_world flashed)
-- [ ] I2C scan done (touch chip identified: CHSC6X or CST816S?)
-- [ ] Display shows a test color (esp_lcd_gc9a01)
+- [x] ESP-IDF toolchain installed
+- [x] Board boots (hello_world flashed)
+- [x] I2C scan done (touch chip identified: CHSC6X at 0x2E, RTC BM8563 at 0x51)
+- [x] Display shows a test color (esp_lcd_gc9a01)
 - [ ] LVGL integrated, demo widget visible
 - [ ] PC simulator (SDL2) set up
 - [ ] Touch registered with LVGL
