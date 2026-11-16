@@ -19,6 +19,7 @@
 #include <stdio.h>
 
 #include "pet_state.h"
+#include "storage_record.h"
 #include "tick_scheduler.h"
 
 /** Number of failed checks, turned into the process exit code by main(). */
@@ -328,6 +329,85 @@ static void test_scheduler(void) {
            "small steps: age matches");
 }
 
+/** @brief Checks the persisted byte format. */
+static void test_storage_record(void) {
+  printf("test_storage_record\n");
+
+  storage_record_t in;
+  pet_init(&in.pet);
+  in.pet.hunger = 55;
+  in.pet.energy = 33;
+  in.pet.happiness = 77;
+  in.pet.sleeping = true;
+  in.pet.age_seconds = 0x01020304;
+  in.pet.hunger_carry_s = 0x0A0B;
+  in.pet.energy_carry_s = 59;
+  in.pet.happiness_carry_s = 179;
+  in.last_time_s = 0xDEADBEEF;
+
+  uint8_t buf[STORAGE_RECORD_SIZE];
+  size_t len = storage_record_pack(&in, buf);
+  CHECK_EQ(len, STORAGE_RECORD_SIZE, "pack writes 19 bytes");
+  CHECK_EQ(buf[0], STORAGE_RECORD_VERSION, "byte 0 is the version");
+  CHECK_EQ(buf[5], 0x04, "age_seconds is little-endian (low byte first)");
+  CHECK_EQ(buf[8], 0x01, "age_seconds is little-endian (high byte last)");
+
+  storage_record_t out;
+  CHECK_EQ(storage_record_unpack(buf, len, &out), 1, "round trip unpacks");
+  CHECK_EQ(out.pet.hunger, 55, "round trip: hunger");
+  CHECK_EQ(out.pet.energy, 33, "round trip: energy");
+  CHECK_EQ(out.pet.happiness, 77, "round trip: happiness");
+  CHECK_EQ(out.pet.sleeping, 1, "round trip: sleeping");
+  CHECK_EQ(out.pet.age_seconds, 0x01020304, "round trip: age");
+  CHECK_EQ(out.pet.hunger_carry_s, 0x0A0B, "round trip: hunger carry");
+  CHECK_EQ(out.pet.energy_carry_s, 59, "round trip: energy carry");
+  CHECK_EQ(out.pet.happiness_carry_s, 179, "round trip: happiness carry");
+  CHECK_EQ((long)out.last_time_s, (long)0xDEADBEEF, "round trip: last_time_s");
+
+  // Rejections leave the output untouched.
+  storage_record_t untouched;
+  pet_init(&untouched.pet);
+  untouched.last_time_s = 42;
+
+  CHECK_EQ(storage_record_unpack(buf, len - 1, &untouched), 0, "truncated rejected");
+  CHECK_EQ(storage_record_unpack(buf, len + 1, &untouched), 0, "too long rejected");
+
+  uint8_t bad[STORAGE_RECORD_SIZE];
+  for (size_t i = 0; i < sizeof(bad); i++) {
+    bad[i] = buf[i];
+  }
+  bad[0] = 99;
+  CHECK_EQ(storage_record_unpack(bad, len, &untouched), 0, "unknown version rejected");
+  bad[0] = buf[0];
+  bad[1] = 101;
+  CHECK_EQ(storage_record_unpack(bad, len, &untouched), 0, "hunger > 100 rejected");
+  bad[1] = buf[1];
+  bad[4] = 2;
+  CHECK_EQ(storage_record_unpack(bad, len, &untouched), 0, "sleeping not 0/1 rejected");
+  CHECK_EQ(untouched.last_time_s, 42, "failed unpack leaves output untouched");
+}
+
+/** @brief Checks the periodic save timing. */
+static void test_save_timing(void) {
+  printf("test_save_timing\n");
+  tick_scheduler_t sched;
+  tick_scheduler_init(&sched, 1000);
+
+  CHECK_EQ(tick_scheduler_save_due(&sched, 1000, 300), 0, "not due right after init");
+  CHECK_EQ(tick_scheduler_save_due(&sched, 1299, 300), 0, "not due before interval");
+  CHECK_EQ(tick_scheduler_save_due(&sched, 1300, 300), 1, "due at interval");
+
+  tick_scheduler_mark_saved(&sched, 1300);
+  CHECK_EQ(tick_scheduler_save_due(&sched, 1400, 300), 0, "mark_saved restarts the interval");
+  CHECK_EQ(tick_scheduler_save_due(&sched, 1600, 300), 1, "due again after the next interval");
+
+  pet_state_t pet;
+  pet_init(&pet);
+  tick_scheduler_update(&sched, &pet, 100);  // clock jumps backwards
+  CHECK_EQ(tick_scheduler_save_due(&sched, 100, 300), 0, "backwards clock: no immediate save");
+  CHECK_EQ(tick_scheduler_save_due(&sched, 400, 300), 1, "backwards clock: interval counts from new time");
+}
+
 int main(void) {
   test_init_values();
   test_tick_is_additive();
@@ -336,6 +416,8 @@ int main(void) {
   test_sleep();
   test_sleep_button_is_not_free();
   test_scheduler();
+  test_storage_record();
+  test_save_timing();
 
   printf("\n%d check(s) failed\n", failures);
   return failures == 0 ? 0 : 1;
