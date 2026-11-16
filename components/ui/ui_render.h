@@ -8,6 +8,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include "pet_state.h"
 
 #ifdef __cplusplus
@@ -19,9 +21,17 @@ extern "C" {
  *
  * Call once at startup, before any call to ui_render_update().
  *
- * @todo Display + LVGL initialization (esp_lcd_gc9a01 + flush callback).
+ * Currently sets up the SPI bus, the GC9A01 panel and the backlight. LVGL
+ * follows later.
  */
 void ui_render_init(void);
+
+/**
+ * @brief Fills the whole screen with one color (bring-up helper).
+ *
+ * @param rgb565 Color as RGB565, e.g. 0xF800 red, 0x07E0 green, 0x001F blue.
+ */
+void ui_render_fill(uint16_t rgb565);
 
 /**
  * @brief Redraws the screen to match the current state.
