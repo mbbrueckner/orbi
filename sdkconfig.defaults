@@ -5,3 +5,8 @@ CONFIG_ESPTOOLPY_FLASHSIZE_4MB=y
 # Log over USB only. The default UART console would drive GPIO16/17, which
 # are the display backlight (D6) and the touch interrupt (D7).
 CONFIG_ESP_CONSOLE_USB_SERIAL_JTAG=y
+
+# LVGL: RGB565 with swapped bytes (the panel is on an 8-bit SPI bus)
+CONFIG_LV_COLOR_DEPTH_16=y
+CONFIG_LV_COLOR_16_SWAP=y
+CONFIG_LV_FONT_MONTSERRAT_28=y
