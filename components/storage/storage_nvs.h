@@ -3,14 +3,16 @@
  * @brief Persists the pet across power cycles using the ESP32 NVS partition.
  *
  * Without this the pet would be reborn on every reset. NVS lives in its own
- * flash partition and survives reflashing the application.
+ * flash partition and survives reflashing the application. The bytes written
+ * are the versioned record from storage_record.h, stored as one blob so a
+ * power cut can never leave a half-updated mix of old and new values.
  */
 
 #pragma once
 
 #include <stdbool.h>
 
-#include "pet_state.h"
+#include "storage_record.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -19,6 +21,7 @@ extern "C" {
 /**
  * @brief Mounts the NVS partition.
  *
+ * Erases and re-initialises it if it is full or from a newer IDF version.
  * Call once at startup, before any load or save.
  */
 void storage_nvs_init(void);
@@ -26,21 +29,23 @@ void storage_nvs_init(void);
 /**
  * @brief Restores a previously saved pet.
  *
- * @param state State to fill. Left untouched when nothing was stored.
- * @return true when a saved pet was found and loaded, false on a fresh device.
- *         On false the caller should fall back to pet_init().
+ * @param record Record to fill. Left untouched when nothing valid was stored.
+ * @return true when a valid record was found and loaded, false on a fresh
+ *         device or corrupt/unknown data. On false the caller should fall back
+ *         to pet_init().
  */
-bool storage_nvs_load(pet_state_t* state);
+bool storage_nvs_load(storage_record_t* record);
 
 /**
- * @brief Writes the pet to flash.
+ * @brief Writes the record to flash.
  *
- * Flash endurance is finite, so call this on meaningful changes rather than on
- * every tick.
+ * Flash endurance is finite, so call this on user actions and every few
+ * minutes (see tick_scheduler_save_due()), not on every tick.
  *
- * @param state State to persist. Not modified.
+ * @param record Record to persist. Not modified.
+ * @return true if the write was committed.
  */
-void storage_nvs_save(const pet_state_t* state);
+bool storage_nvs_save(const storage_record_t* record);
 
 #ifdef __cplusplus
 }
