@@ -25,6 +25,15 @@ extern "C" {
 void ui_render_init(void);
 
 /**
+ * @brief Takes the LVGL lock. LVGL is not thread safe, so every LVGL call
+ *        from outside ui_render must be wrapped in lock/unlock.
+ */
+void ui_render_lock(void);
+
+/** @brief Releases the LVGL lock taken by ui_render_lock(). */
+void ui_render_unlock(void);
+
+/**
  * @brief Redraws the screen to match the current state.
  *
  * Picks the sprite from pet_get_mood() and refreshes the status bars.

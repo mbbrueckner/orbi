@@ -78,8 +78,12 @@ static void lvgl_task(void* arg) {
     xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
     uint32_t wait_ms = lv_timer_handler();
     xSemaphoreGive(lvgl_mutex);
+
     if (wait_ms < 5) {
       wait_ms = 5;
+    }
+    if (wait_ms > 30) {
+      wait_ms = 30;  // LV_NO_TIMER_READY and friends must not sleep forever
     }
     vTaskDelay(pdMS_TO_TICKS(wait_ms));
   }
@@ -179,6 +183,10 @@ void ui_render_init(void) {
   xTaskCreate(lvgl_task, "lvgl", 6144, NULL, 2, NULL);
   ESP_LOGI(TAG, "display and LVGL initialised");
 }
+
+void ui_render_lock(void) { xSemaphoreTake(lvgl_mutex, portMAX_DELAY); }
+
+void ui_render_unlock(void) { xSemaphoreGive(lvgl_mutex); }
 
 void ui_render_update(const pet_state_t* state) {
   static const char* const mood_names[] = {"happy", "hungry", "tired", "sad"};
