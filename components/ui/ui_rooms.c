@@ -282,6 +282,12 @@ static void bar_set_value(lv_obj_t* frame, int value) {
   }
 }
 
+/*
+ * Fonts: the pixel font is 8 px wide per letter at size 8 and 16 px at size
+ * 16, so only short texts use the big one. Titles and numbers use the small one.
+ */
+#define TITLE_Y 24
+
 /**
  * Creates a room page with background color, an optional background picture
  * (NULL for none, drawn doubled) and a title (NULL for no title).
@@ -313,7 +319,8 @@ static lv_obj_t* make_page(int index,
     lv_obj_t* title_label = lv_label_create(page);
     lv_label_set_text(title_label, title);
     lv_obj_set_style_text_color(title_label, lv_color_white(), 0);
-    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, 22);
+    lv_obj_set_style_text_font(title_label, &lv_font_unscii_8, 0);
+    lv_obj_align(title_label, LV_ALIGN_TOP_MID, 0, TITLE_Y);
   }
 
   rooms[index].page = page;
@@ -435,7 +442,8 @@ static void create_living_room(void) {
     stat_values[i] = lv_label_create(page);
     lv_label_set_text(stat_values[i], "");
     lv_obj_set_style_text_color(stat_values[i], lv_color_white(), 0);
-    lv_obj_set_pos(stat_values[i], STATUS_VALUE_X, top + 2);
+    lv_obj_set_style_text_font(stat_values[i], &lv_font_unscii_8, 0);
+    lv_obj_set_pos(stat_values[i], STATUS_VALUE_X, top + 8);
   }
 
   status_mood = lv_label_create(page);
@@ -601,7 +609,7 @@ static void create_dining_room(void) {
  * The title sits at the very top, above the lamp's shade. The lamp's thin
  * cord runs behind the letters, so the title is created after the lamp.
  */
-#define BEDROOM_TITLE_Y 12
+#define BEDROOM_TITLE_Y 14
 #define BEDROOM_BAR_Y 214
 #define BEDROOM_BAR_W 100
 
@@ -649,6 +657,7 @@ static void create_bedroom(void) {
   lv_obj_t* title = lv_label_create(page);
   lv_label_set_text(title, "Schlafzimmer");
   lv_obj_set_style_text_color(title, lv_color_white(), 0);
+  lv_obj_set_style_text_font(title, &lv_font_unscii_8, 0);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, BEDROOM_TITLE_Y);
 }
 
