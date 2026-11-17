@@ -37,11 +37,12 @@ SETS = [
     ("ball", "ball", 20),
     ("apple", "apple", 20),
     ("lamp", "lamp", 32),
+    ("icon", "icon", 10),
 ]
 
 
 # Room backgrounds: (name, size). Order must match room_bg_t in sprites.h.
-ROOMS = [("dining", 120), ("bedroom", 120), ("garden", 120)]
+ROOMS = [("living", 120), ("dining", 120), ("bedroom", 120), ("garden", 120)]
 
 
 def room_bytes(img):

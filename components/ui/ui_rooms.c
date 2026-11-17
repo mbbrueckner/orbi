@@ -197,15 +197,89 @@ static void pager_event_cb(lv_event_t* e) {
 
 /* ---- Shared building blocks ---- */
 
-/** Creates a value bar that lets touches pass through to the carousel. */
+/*
+ * Pixel bars: ten square segments in a frame, like on a classic handheld.
+ * A lit segment has a lighter top edge. Everything is drawn without rounded
+ * corners, so it stays crisp on the display.
+ */
+#define BAR_SEGMENTS 10
+#define BAR_SEG_HEIGHT 8
+#define BAR_GAP 2
+#define BAR_BORDER 2
+#define BAR_MAX_COUNT 8
+
+typedef struct {
+  lv_obj_t* seg[BAR_SEGMENTS];
+  lv_color_t color;
+  int lit;  /**< Lit segments, -1 until the first update. */
+} pixel_bar_t;
+
+static pixel_bar_t pixel_bars[BAR_MAX_COUNT];
+static int pixel_bar_count;
+
+static void style_segment(lv_obj_t* seg, bool lit, lv_color_t color) {
+  if (lit) {
+    lv_obj_set_style_bg_color(seg, color, 0);
+    lv_obj_set_style_border_color(seg, lv_color_lighten(color, 90), 0);
+  } else {
+    lv_obj_set_style_bg_color(seg, lv_color_make(0x3A, 0x34, 0x48), 0);
+    lv_obj_set_style_border_color(seg, lv_color_make(0x48, 0x42, 0x58), 0);
+  }
+}
+
+/** Creates a pixel bar of about @p width pixels that ignores touches. */
 static lv_obj_t* make_bar(lv_obj_t* parent, int width, lv_color_t color) {
-  lv_obj_t* bar = lv_bar_create(parent);
-  lv_obj_set_size(bar, width, 8);
-  lv_bar_set_range(bar, 0, 100);
-  lv_obj_set_style_bg_color(bar, lv_color_make(0x40, 0x40, 0x40), 0);
-  lv_obj_set_style_bg_color(bar, color, LV_PART_INDICATOR);
-  lv_obj_clear_flag(bar, LV_OBJ_FLAG_CLICKABLE);
-  return bar;
+  pixel_bar_t* bar = &pixel_bars[pixel_bar_count++];
+  bar->color = color;
+  bar->lit = -1;
+
+  int seg_w = (width - 2 * BAR_BORDER - (BAR_SEGMENTS - 1) * BAR_GAP) / BAR_SEGMENTS;
+  int inner_w = BAR_SEGMENTS * seg_w + (BAR_SEGMENTS - 1) * BAR_GAP;
+
+  lv_obj_t* frame = lv_obj_create(parent);
+  lv_obj_set_size(
+      frame, inner_w + 2 * BAR_BORDER, BAR_SEG_HEIGHT + 2 * BAR_BORDER);
+  lv_obj_set_style_radius(frame, 0, 0);
+  lv_obj_set_style_pad_all(frame, 0, 0);
+  lv_obj_set_style_border_width(frame, BAR_BORDER, 0);
+  lv_obj_set_style_border_color(frame, lv_color_make(0xE2, 0xD6, 0xBE), 0);
+  lv_obj_set_style_bg_color(frame, lv_color_make(0x22, 0x1C, 0x2C), 0);
+  lv_obj_set_style_bg_opa(frame, LV_OPA_COVER, 0);
+  lv_obj_clear_flag(frame, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+  lv_obj_set_user_data(frame, bar);
+
+  for (int i = 0; i < BAR_SEGMENTS; i++) {
+    lv_obj_t* seg = lv_obj_create(frame);
+    lv_obj_set_size(seg, seg_w, BAR_SEG_HEIGHT);
+    lv_obj_set_pos(seg, i * (seg_w + BAR_GAP), 0);
+    lv_obj_set_style_radius(seg, 0, 0);
+    lv_obj_set_style_pad_all(seg, 0, 0);
+    lv_obj_set_style_bg_opa(seg, LV_OPA_COVER, 0);
+    lv_obj_set_style_border_width(seg, 2, 0);
+    lv_obj_set_style_border_side(seg, LV_BORDER_SIDE_TOP, 0);
+    lv_obj_clear_flag(seg, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+    style_segment(seg, false, color);
+    bar->seg[i] = seg;
+  }
+  return frame;
+}
+
+/** Lights as many segments as the value (0 to 100) needs, rounding up. */
+static void bar_set_value(lv_obj_t* frame, int value) {
+  pixel_bar_t* bar = lv_obj_get_user_data(frame);
+  int lit = (value + 9) / 10;
+  if (lit < 0) {
+    lit = 0;
+  } else if (lit > BAR_SEGMENTS) {
+    lit = BAR_SEGMENTS;
+  }
+  if (lit == bar->lit) {
+    return;
+  }
+  bar->lit = lit;
+  for (int i = 0; i < BAR_SEGMENTS; i++) {
+    style_segment(bar->seg[i], i < lit, bar->color);
+  }
 }
 
 /**
@@ -273,10 +347,10 @@ static void place_pet(lv_obj_t* pet, int center_x, int center_y, int size) {
 }
 
 /** Adds bar, pet and mood text to a pet room. */
-static void add_pet_to_room(int index, lv_color_t bar_color) {
+static void add_pet_to_room(int index, lv_color_t bar_color, int bar_width) {
   lv_obj_t* page = rooms[index].page;
 
-  lv_obj_t* bar = make_bar(page, 100, bar_color);
+  lv_obj_t* bar = make_bar(page, bar_width, bar_color);
   lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 46);
 
   lv_obj_t* pet = make_pet(page, PET_SIZE);
@@ -302,47 +376,77 @@ static lv_obj_t* stat_bars[STAT_COUNT];
 static lv_obj_t* stat_values[STAT_COUNT];
 /** Size of the small pet shown at the top of the living room. */
 #define STATUS_PET_SIZE 50
+/** Layout of the stat panel: three rows of icon, bar and value. */
+#define STATUS_PANEL_W 190
+#define STATUS_PANEL_H 78
+#define STATUS_PANEL_Y 96
+#define STATUS_ROWS_Y 100
+#define STATUS_ROW_H 24
+#define STATUS_ICON_X 54
+#define STATUS_BAR_X 72
+#define STATUS_BAR_W 92
+#define STATUS_VALUE_X 172
 
 static lv_obj_t* status_mood;
 static lv_obj_t* status_age;
-static char status_note[32];
 
 static void create_living_room(void) {
-  lv_obj_t* page = make_page(ROOM_LIVING, "Wohnzimmer", lv_color_make(0x18, 0x18, 0x20), NULL);
+  lv_obj_t* page = make_page(ROOM_LIVING,
+                             "Wohnzimmer",
+                             lv_color_make(0x18, 0x18, 0x20),
+                             sprites_room(ROOM_BG_LIVING));
 
-  static const char* const names[STAT_COUNT] = {"Sattheit", "Energie", "Glueck"};
-  const lv_color_t colors[STAT_COUNT] = {lv_color_make(0x40, 0xC0, 0x60),
-                                         lv_color_make(0x50, 0x90, 0xFF),
-                                         lv_color_make(0xF0, 0xD0, 0x40)};
+  // The pet sits on the sofa that is part of the background picture.
   lv_obj_t* pet = make_pet(page, STATUS_PET_SIZE);
   lv_obj_align(pet, LV_ALIGN_TOP_MID, 0, 42 + STATUS_PET_SIZE / 2 - SPRITE_SIZE / 2);
 
+  // A framed panel behind the three stat rows.
+  lv_obj_t* panel = lv_obj_create(page);
+  lv_obj_set_size(panel, STATUS_PANEL_W, STATUS_PANEL_H);
+  lv_obj_set_pos(panel, (SCREEN_SIZE - STATUS_PANEL_W) / 2, STATUS_PANEL_Y);
+  lv_obj_set_style_radius(panel, 0, 0);
+  lv_obj_set_style_pad_all(panel, 0, 0);
+  lv_obj_set_style_border_width(panel, 2, 0);
+  lv_obj_set_style_border_color(panel, lv_color_make(0xE2, 0xD6, 0xBE), 0);
+  lv_obj_set_style_outline_width(panel, 2, 0);
+  lv_obj_set_style_outline_color(panel, lv_color_make(0x0C, 0x08, 0x14), 0);
+  lv_obj_set_style_bg_color(panel, lv_color_make(0x14, 0x10, 0x1E), 0);
+  lv_obj_set_style_bg_opa(panel, 220, 0);
+  lv_obj_clear_flag(panel, LV_OBJ_FLAG_SCROLLABLE | LV_OBJ_FLAG_CLICKABLE);
+
+  const lv_color_t colors[STAT_COUNT] = {lv_color_make(0x40, 0xC0, 0x60),
+                                         lv_color_make(0x50, 0x90, 0xFF),
+                                         lv_color_make(0xF0, 0xD0, 0x40)};
   for (int i = 0; i < STAT_COUNT; i++) {
-    int top = 100 + i * 28;
+    int top = STATUS_ROWS_Y + i * STATUS_ROW_H;
 
-    lv_obj_t* name = lv_label_create(page);
-    lv_label_set_text(name, names[i]);
-    lv_obj_set_style_text_color(name, lv_color_white(), 0);
-    lv_obj_set_pos(name, 28, top);
+    // Icon sprite (10 px, shown doubled), drawn around the center of its box.
+    lv_obj_t* icon = lv_img_create(page);
+    lv_img_set_src(icon, sprites_get(SPRITE_ICON, i));
+    lv_img_set_antialias(icon, false);
+    lv_img_set_zoom(icon, 512);
+    lv_obj_set_pos(icon,
+                   STATUS_ICON_X - SPRITE_ICON_SIZE / 2,
+                   top + STATUS_ROW_H / 2 - SPRITE_ICON_SIZE / 2);
 
-    stat_bars[i] = make_bar(page, 84, colors[i]);
-    lv_obj_set_pos(stat_bars[i], 98, top + 4);
+    stat_bars[i] = make_bar(page, STATUS_BAR_W, colors[i]);
+    lv_obj_set_pos(stat_bars[i], STATUS_BAR_X, top + 4);
 
     stat_values[i] = lv_label_create(page);
     lv_label_set_text(stat_values[i], "");
     lv_obj_set_style_text_color(stat_values[i], lv_color_white(), 0);
-    lv_obj_set_pos(stat_values[i], 192, top);
+    lv_obj_set_pos(stat_values[i], STATUS_VALUE_X, top + 2);
   }
 
   status_mood = lv_label_create(page);
   lv_label_set_text(status_mood, "");
   lv_obj_set_style_text_color(status_mood, lv_color_make(0xFF, 0xB0, 0x40), 0);
-  lv_obj_align(status_mood, LV_ALIGN_TOP_MID, 0, 184);
+  lv_obj_align(status_mood, LV_ALIGN_TOP_MID, 0, 178);
 
   status_age = lv_label_create(page);
   lv_label_set_text(status_age, "");
-  lv_obj_set_style_text_color(status_age, lv_color_make(0xA0, 0xA0, 0xA0), 0);
-  lv_obj_set_style_text_align(status_age, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_set_style_text_color(status_age, lv_color_make(0xC0, 0xB8, 0xD0), 0);
+  lv_obj_set_style_text_font(status_age, &lv_font_unscii_8, 0);  // small
   lv_obj_align(status_age, LV_ALIGN_TOP_MID, 0, 200);
 
   rooms[ROOM_LIVING].pet = pet;
@@ -470,7 +574,7 @@ static void create_dining_room(void) {
                 "Esszimmer",
                 lv_color_make(0x2A, 0x1A, 0x10),
                 sprites_room(ROOM_BG_DINING));
-  add_pet_to_room(ROOM_DINING, lv_color_make(0x40, 0xC0, 0x60));
+  add_pet_to_room(ROOM_DINING, lv_color_make(0x40, 0xC0, 0x60), 100);
 
   // No event bubbling: dragging the food must not slide the carousel.
   food = lv_img_create(page);
@@ -493,7 +597,13 @@ static void create_dining_room(void) {
 #define LAMP_TOUCH_MARGIN 24
 /** Darkness over the room while the pet sleeps (0 to 255). */
 #define NIGHT_OPACITY 150
-#define BEDROOM_BAR_Y 218
+/*
+ * The title sits at the very top, above the lamp's shade. The lamp's thin
+ * cord runs behind the letters, so the title is created after the lamp.
+ */
+#define BEDROOM_TITLE_Y 12
+#define BEDROOM_BAR_Y 214
+#define BEDROOM_BAR_W 100
 
 static void lamp_cb(lv_event_t* e) {
   (void)e;
@@ -504,14 +614,15 @@ static void lamp_cb(lv_event_t* e) {
 }
 
 static void create_bedroom(void) {
-  // No title: the lamp hangs at the top of the room.
   lv_obj_t* page =
       make_page(ROOM_BEDROOM,
                 NULL,
                 lv_color_make(0x10, 0x14, 0x30),
                 sprites_room(ROOM_BG_BEDROOM));
-  add_pet_to_room(ROOM_BEDROOM, lv_color_make(0x50, 0x90, 0xFF));
+  add_pet_to_room(
+      ROOM_BEDROOM, lv_color_make(0x50, 0x90, 0xFF), BEDROOM_BAR_W);
   lv_obj_align(rooms[ROOM_BEDROOM].bar, LV_ALIGN_TOP_MID, 0, BEDROOM_BAR_Y);
+
 
   // Darkens everything below it, but not the lamp.
   night_overlay = lv_obj_create(page);
@@ -534,6 +645,11 @@ static void create_bedroom(void) {
   lv_obj_set_ext_click_area(lamp, LAMP_TOUCH_MARGIN);
   lv_obj_add_flag(lamp, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_EVENT_BUBBLE);
   lv_obj_add_event_cb(lamp, lamp_cb, LV_EVENT_CLICKED, NULL);
+
+  lv_obj_t* title = lv_label_create(page);
+  lv_label_set_text(title, "Schlafzimmer");
+  lv_obj_set_style_text_color(title, lv_color_white(), 0);
+  lv_obj_align(title, LV_ALIGN_TOP_MID, 0, BEDROOM_TITLE_Y);
 }
 
 /* ---- Garden: throw the ball, the pet fetches it ---- */
@@ -766,7 +882,7 @@ static void create_garden(void) {
                 "Garten",
                 lv_color_make(0x10, 0x28, 0x1C),
                 sprites_room(ROOM_BG_GARDEN));
-  add_pet_to_room(ROOM_GARDEN, lv_color_make(0xF0, 0xD0, 0x40));
+  add_pet_to_room(ROOM_GARDEN, lv_color_make(0xF0, 0xD0, 0x40), 100);
   garden_pet = rooms[ROOM_GARDEN].pet;
 
   garden_ball = lv_img_create(page);
@@ -822,26 +938,22 @@ void ui_rooms_create(ui_action_cb_t action_cb) {
   lv_timer_create(sprite_timer_cb, SPRITE_FRAME_MS, NULL);
 }
 
-void ui_rooms_set_note(const char* text) {
-  lv_snprintf(status_note, sizeof(status_note), "%s", text);
-}
-
 void ui_rooms_update(const pet_state_t* state) {
-  static const char* const mood_names[] = {"happy", "hungry", "tired", "sad"};
+  static const char* const mood_names[] = {"froehlich", "hungrig", "muede", "traurig"};
 
   pet_sleeping = state->sleeping;
 
   const int values[STAT_COUNT] = {
       100 - state->hunger, state->energy, state->happiness};
   for (int i = 0; i < STAT_COUNT; i++) {
-    lv_bar_set_value(stat_bars[i], values[i], LV_ANIM_OFF);
+    bar_set_value(stat_bars[i], values[i]);
     lv_label_set_text_fmt(stat_values[i], "%d", values[i]);
   }
-  lv_bar_set_value(rooms[ROOM_DINING].bar, values[STAT_SATIETY], LV_ANIM_OFF);
-  lv_bar_set_value(rooms[ROOM_BEDROOM].bar, values[STAT_ENERGY], LV_ANIM_OFF);
-  lv_bar_set_value(rooms[ROOM_GARDEN].bar, values[STAT_HAPPINESS], LV_ANIM_OFF);
+  bar_set_value(rooms[ROOM_DINING].bar, values[STAT_SATIETY]);
+  bar_set_value(rooms[ROOM_BEDROOM].bar, values[STAT_ENERGY]);
+  bar_set_value(rooms[ROOM_GARDEN].bar, values[STAT_HAPPINESS]);
 
-  const char* text = state->sleeping ? "zzz" : mood_names[pet_get_mood(state)];
+  const char* text = state->sleeping ? "schlaeft" : mood_names[pet_get_mood(state)];
   for (int i = 0; i < ROOM_COUNT; i++) {
     lv_label_set_text(rooms[i].mood, text);
   }
@@ -852,11 +964,9 @@ void ui_rooms_update(const pet_state_t* state) {
   show_sprite_frame();
 
   lv_label_set_text_fmt(status_age,
-                        "Alter: %dh %02dm%s%s",
+                        "Alter: %dh %02dm",
                         (int)(state->age_seconds / 3600),
-                        (int)(state->age_seconds % 3600 / 60),
-                        status_note[0] != '\0' ? "\n" : "",
-                        status_note);
+                        (int)(state->age_seconds % 3600 / 60));
 
   lv_img_set_src(lamp, sprites_get(SPRITE_LAMP, state->sleeping ? 1 : 0));
   if (state->sleeping) {

@@ -225,12 +225,6 @@ void ui_render_lock(void) { xSemaphoreTake(lvgl_mutex, portMAX_DELAY); }
 
 void ui_render_unlock(void) { xSemaphoreGive(lvgl_mutex); }
 
-void ui_render_set_note(const char* text) {
-  xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
-  ui_rooms_set_note(text);
-  xSemaphoreGive(lvgl_mutex);
-}
-
 void ui_render_update(const pet_state_t* state) {
   xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
   ui_rooms_update(state);

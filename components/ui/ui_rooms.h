@@ -23,15 +23,6 @@ extern "C" {
 void ui_rooms_create(ui_action_cb_t action_cb);
 
 /**
- * @brief Sets a short note shown under the age in the living room.
- *
- * Used to show how the last boot went (RTC state, time caught up).
- *
- * @param text At most 31 characters. Copied.
- */
-void ui_rooms_set_note(const char* text);
-
-/**
  * @brief Refreshes bars, mood text and sleep look from the pet state.
  *
  * @param state Current pet. Not modified.

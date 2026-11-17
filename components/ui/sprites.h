@@ -17,12 +17,14 @@ extern "C" {
 #define SPRITE_BALL_SIZE 20
 #define SPRITE_APPLE_SIZE 20
 #define SPRITE_LAMP_SIZE 32
+#define SPRITE_ICON_SIZE 10
 
 /**
  * Animation sets. The first four match pet_mood_t. SPRITE_BALL is the ball:
  * frame 1 round, 2 slightly squashed, 3 flat (all anchored at the bottom).
  * SPRITE_APPLE: frame 1 whole, 2 to 4 one more bite each, 5 only the core.
  * SPRITE_LAMP: frame 1 light on, 2 light off.
+ * SPRITE_ICON: status icons, frame 1 food, 2 energy, 3 happiness.
  */
 typedef enum {
   SPRITE_HAPPY,
@@ -33,6 +35,7 @@ typedef enum {
   SPRITE_BALL,
   SPRITE_APPLE,
   SPRITE_LAMP,
+  SPRITE_ICON,
   SPRITE_SET_COUNT
 } sprite_set_t;
 
@@ -40,6 +43,7 @@ typedef enum {
 #define ROOM_BG_SIZE 120
 
 typedef enum {
+  ROOM_BG_LIVING,
   ROOM_BG_DINING,
   ROOM_BG_BEDROOM,
   ROOM_BG_GARDEN,

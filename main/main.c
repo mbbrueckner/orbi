@@ -206,15 +206,11 @@ void app_main(void) {
     uint32_t applied_s = tick_scheduler_update(&scheduler, &pet, now);
     if (first_update) {
       first_update = false;
-      // Shown on the status page so the boot result is visible without a
-      // serial monitor.
-      char note[32];
       if (rtc_was_valid) {
-        snprintf(note, sizeof(note), "RTC ok %us", (unsigned)(applied_s / TIME_SPEEDUP));
+        ESP_LOGI(TAG, "RTC ok, caught up %us", (unsigned)(applied_s / TIME_SPEEDUP));
       } else {
-        snprintf(note, sizeof(note), "RTC reset");
+        ESP_LOGW(TAG, "RTC time invalid, started from the build time");
       }
-      ui_render_set_note(note);
     }
     ui_render_update(&pet);
 
