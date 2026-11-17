@@ -18,6 +18,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "chsc6x_parse.h"
 #include "pet_state.h"
 #include "storage_record.h"
 #include "tick_scheduler.h"
@@ -408,6 +409,30 @@ static void test_save_timing(void) {
   CHECK_EQ(tick_scheduler_save_due(&sched, 400, 300), 1, "backwards clock: interval counts from new time");
 }
 
+/** @brief Checks decoding of the CHSC6X touch reports (real captured data). */
+static void test_chsc6x_parse(void) {
+  printf("test_chsc6x_parse\n");
+  uint16_t x = 0;
+  uint16_t y = 0;
+
+  const uint8_t pressed[5] = {0x01, 0x80, 0x67, 0x00, 0x93};
+  CHECK_EQ(chsc6x_parse(pressed, &x, &y), CHSC6X_PRESSED, "finger down detected");
+  CHECK_EQ(x, 0x67, "x is byte 2");
+  CHECK_EQ(y, 0x93, "y is byte 4");
+
+  const uint8_t released[5] = {0x00, 0x40, 0x6C, 0x00, 0x01};
+  CHECK_EQ(chsc6x_parse(released, &x, &y), CHSC6X_RELEASED, "no touch detected");
+
+  const uint8_t glitch[5] = {0x7F, 0xFF, 0xFF, 0xFF, 0xFF};
+  CHECK_EQ(chsc6x_parse(glitch, &x, &y), CHSC6X_INVALID, "garbage report rejected");
+
+  const uint8_t out_of_range[5] = {0x01, 0x80, 0xF0, 0x00, 0x10};
+  CHECK_EQ(chsc6x_parse(out_of_range, &x, &y), CHSC6X_INVALID, "x >= 240 rejected");
+
+  const uint8_t edge[5] = {0x01, 0x80, 239, 0x00, 0};
+  CHECK_EQ(chsc6x_parse(edge, &x, &y), CHSC6X_PRESSED, "edge pixel 239 accepted");
+}
+
 int main(void) {
   test_init_values();
   test_tick_is_additive();
@@ -418,6 +443,7 @@ int main(void) {
   test_scheduler();
   test_storage_record();
   test_save_timing();
+  test_chsc6x_parse();
 
   printf("\n%d check(s) failed\n", failures);
   return failures == 0 ? 0 : 1;
