@@ -41,9 +41,11 @@ static void read_cb(lv_indev_drv_t* drv, lv_indev_data_t* data) {
         if (last_state != LV_INDEV_STATE_PRESSED) {
           ESP_LOGD(TAG, "pressed at x=%u y=%u", x, y);
         }
+        // The display is rotated (see ui_render.c), so the touch position is
+        // rotated the same way.
         last_state = LV_INDEV_STATE_PRESSED;
-        last_x = (lv_coord_t)x;
-        last_y = (lv_coord_t)y;
+        last_x = (lv_coord_t)(CHSC6X_RESOLUTION - 1 - y);
+        last_y = (lv_coord_t)x;
         break;
       case CHSC6X_RELEASED:
         if (last_state != LV_INDEV_STATE_RELEASED) {
