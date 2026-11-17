@@ -9,7 +9,7 @@
  *  - Bedroom:     tap the button to send the pet to sleep or wake it up.
  *  - Garden:      tap the ball, the pet fetches it (counts as playing).
  *
- * The pet is a grey circle with eyes until real sprites exist.
+ * The pet is drawn from the raccoon sprites (see sprites.h).
  */
 
 #include "ui_rooms.h"
@@ -17,6 +17,7 @@
 #include <stdbool.h>
 
 #include "lvgl.h"
+#include "sprites.h"
 
 #define SCREEN_SIZE 240
 
@@ -240,14 +241,21 @@ static lv_obj_t* make_page(int index, const char* title, lv_color_t background) 
   return page;
 }
 
-/** Creates the placeholder pet (grey circle with eyes) at the given size. */
+/**
+ * Creates a pet image. The object keeps the sprite size (80 px) and is scaled
+ * around its center, so @p size only changes how large it is drawn.
+ */
 static lv_obj_t* make_pet(lv_obj_t* parent, int size) {
-  lv_obj_t* pet = make_circle(parent, size, lv_color_make(0x9A, 0x9A, 0x9A));
-  lv_obj_t* left_eye = make_circle(pet, size / 8, lv_color_black());
-  lv_obj_align(left_eye, LV_ALIGN_CENTER, -size / 5, -size / 10);
-  lv_obj_t* right_eye = make_circle(pet, size / 8, lv_color_black());
-  lv_obj_align(right_eye, LV_ALIGN_CENTER, size / 5, -size / 10);
+  lv_obj_t* pet = lv_img_create(parent);
+  lv_img_set_src(pet, sprites_get(SPRITE_HAPPY, 0));
+  lv_img_set_zoom(pet, 256 * size / SPRITE_SIZE);
   return pet;
+}
+
+/** Moves and scales a pet image so that it is drawn around a center point. */
+static void place_pet(lv_obj_t* pet, int center_x, int center_y, int size) {
+  lv_obj_set_pos(pet, center_x - SPRITE_SIZE / 2, center_y - SPRITE_SIZE / 2);
+  lv_img_set_zoom(pet, 256 * size / SPRITE_SIZE);
 }
 
 /** Adds bar, pet and mood text to a pet room. */
@@ -291,7 +299,7 @@ static void create_living_room(void) {
                                          lv_color_make(0x50, 0x90, 0xFF),
                                          lv_color_make(0xF0, 0xD0, 0x40)};
   lv_obj_t* pet = make_pet(page, STATUS_PET_SIZE);
-  lv_obj_align(pet, LV_ALIGN_TOP_MID, 0, 42);
+  lv_obj_align(pet, LV_ALIGN_TOP_MID, 0, 42 + STATUS_PET_SIZE / 2 - SPRITE_SIZE / 2);
 
   for (int i = 0; i < STAT_COUNT; i++) {
     int top = 100 + i * 28;
@@ -442,17 +450,17 @@ static void fetch_step(void* var, int32_t t) {
     int32_t u = (t - FETCH_THROW_END_MS) * 1000 /
                 (FETCH_RUN_OUT_END_MS - FETCH_THROW_END_MS);
     place_centered(garden_ball, BALL_FAR_X, BALL_FAR_Y, BALL_FAR_SIZE);
-    place_centered(garden_pet,
-                   lerp(PET_CENTER_X, PET_FAR_X, u),
-                   lerp(PET_CENTER_Y, PET_FAR_Y, u),
-                   lerp(PET_SIZE, PET_FAR_SIZE, u));
+    place_pet(garden_pet,
+              lerp(PET_CENTER_X, PET_FAR_X, u),
+              lerp(PET_CENTER_Y, PET_FAR_Y, u),
+              lerp(PET_SIZE, PET_FAR_SIZE, u));
   } else {
     int32_t u = (t - FETCH_RUN_OUT_END_MS) * 1000 /
                 (FETCH_TOTAL_MS - FETCH_RUN_OUT_END_MS);
     int32_t pet_size = lerp(PET_FAR_SIZE, PET_SIZE, u);
     int32_t pet_x = lerp(PET_FAR_X, PET_CENTER_X, u);
     int32_t pet_y = lerp(PET_FAR_Y, PET_CENTER_Y, u);
-    place_centered(garden_pet, pet_x, pet_y, pet_size);
+    place_pet(garden_pet, pet_x, pet_y, pet_size);
     // The ball is carried at the pet's feet.
     place_centered(garden_ball,
                    pet_x,
@@ -463,7 +471,7 @@ static void fetch_step(void* var, int32_t t) {
 
 static void fetch_done(lv_anim_t* anim) {
   (void)anim;
-  place_centered(garden_pet, PET_CENTER_X, PET_CENTER_Y, PET_SIZE);
+  place_pet(garden_pet, PET_CENTER_X, PET_CENTER_Y, PET_SIZE);
   place_centered(garden_ball, BALL_HOME_CENTER_X, BALL_HOME_CENTER_Y, BALL_SIZE);
   fetching = false;
   send_action(UI_ACTION_PLAY);
@@ -499,6 +507,27 @@ static void create_garden(void) {
   lv_obj_add_event_cb(garden_ball, ball_event_cb, LV_EVENT_CLICKED, NULL);
 }
 
+/* ---- Pet animation ---- */
+
+#define SPRITE_FRAME_MS 400
+
+static sprite_set_t sprite_set = SPRITE_HAPPY;
+static int sprite_frame;
+
+/** Shows the current frame of the current animation on every pet. */
+static void show_sprite_frame(void) {
+  const lv_img_dsc_t* frame = sprites_get(sprite_set, sprite_frame);
+  for (int i = 0; i < ROOM_COUNT; i++) {
+    lv_img_set_src(rooms[i].pet, frame);
+  }
+}
+
+static void sprite_timer_cb(lv_timer_t* timer) {
+  (void)timer;
+  sprite_frame++;
+  show_sprite_frame();
+}
+
 /* ---- Public API ---- */
 
 void ui_rooms_create(ui_action_cb_t action_cb) {
@@ -518,6 +547,7 @@ void ui_rooms_create(ui_action_cb_t action_cb) {
   create_bedroom();
   create_garden();
   layout_rooms();
+  lv_timer_create(sprite_timer_cb, SPRITE_FRAME_MS, NULL);
 }
 
 void ui_rooms_set_note(const char* text) {
@@ -540,12 +570,11 @@ void ui_rooms_update(const pet_state_t* state) {
   lv_bar_set_value(rooms[ROOM_GARDEN].bar, values[STAT_HAPPINESS], LV_ANIM_OFF);
 
   const char* text = state->sleeping ? "zzz" : mood_names[pet_get_mood(state)];
-  lv_color_t pet_color = state->sleeping ? lv_color_make(0x50, 0x50, 0x58)
-                                         : lv_color_make(0x9A, 0x9A, 0x9A);
   for (int i = 0; i < ROOM_COUNT; i++) {
     lv_label_set_text(rooms[i].mood, text);
-    lv_obj_set_style_bg_color(rooms[i].pet, pet_color, 0);
   }
+  sprite_set = state->sleeping ? SPRITE_SLEEP : (sprite_set_t)pet_get_mood(state);
+  show_sprite_frame();
 
   lv_label_set_text_fmt(status_age,
                         "Alter: %dh %02dm%s%s",
