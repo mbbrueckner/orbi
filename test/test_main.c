@@ -20,6 +20,7 @@
 
 #include "chsc6x_parse.h"
 #include "pet_state.h"
+#include "rtc_time.h"
 #include "storage_record.h"
 #include "tick_scheduler.h"
 
@@ -433,6 +434,70 @@ static void test_chsc6x_parse(void) {
   CHECK_EQ(chsc6x_parse(edge, &x, &y), CHSC6X_PRESSED, "edge pixel 239 accepted");
 }
 
+/** @brief Checks the RTC date/time helpers and register coding. */
+static void test_rtc_time(void) {
+  printf("test_rtc_time\n");
+
+  // Reference values computed independently with Python's calendar module.
+  rtc_datetime_t dt = {2000, 1, 1, 0, 0, 0};
+  CHECK_EQ(rtc_datetime_to_unix(&dt), 946684800L, "2000-01-01 is 946684800");
+
+  dt = (rtc_datetime_t){2026, 11, 17, 8, 18, 21};
+  CHECK_EQ(rtc_datetime_to_unix(&dt), 1794903501L, "2026-11-17 08:18:21");
+
+  dt = (rtc_datetime_t){2024, 2, 29, 23, 59, 59};
+  CHECK_EQ(rtc_datetime_to_unix(&dt), 1709251199L, "leap day 2024-02-29");
+
+  // Unix seconds -> date and back.
+  rtc_datetime_t back;
+  rtc_unix_to_datetime(1794903501u, &back);
+  CHECK_EQ(back.year, 2026, "back: year");
+  CHECK_EQ(back.month, 11, "back: month");
+  CHECK_EQ(back.day, 17, "back: day");
+  CHECK_EQ(back.hour, 8, "back: hour");
+  CHECK_EQ(back.minute, 18, "back: minute");
+  CHECK_EQ(back.second, 21, "back: second");
+  rtc_unix_to_datetime(1709251199u, &back);
+  CHECK_EQ(back.month * 100 + back.day, 229, "back: leap day");
+
+  // Register encoding: 2026-11-17 08:18:21 is a Tuesday (2 with 0 = Sunday).
+  uint8_t raw[RTC_REGISTER_COUNT];
+  dt = (rtc_datetime_t){2026, 11, 17, 8, 18, 21};
+  rtc_encode(&dt, raw);
+  CHECK_EQ(raw[0], 0x21, "encode: seconds BCD");
+  CHECK_EQ(raw[1], 0x18, "encode: minutes BCD");
+  CHECK_EQ(raw[2], 0x08, "encode: hours BCD");
+  CHECK_EQ(raw[3], 0x17, "encode: days BCD");
+  CHECK_EQ(raw[4], 2, "encode: weekday Tuesday");
+  CHECK_EQ(raw[5], 0x11, "encode: month BCD");
+  CHECK_EQ(raw[6], 0x26, "encode: year BCD");
+
+  rtc_datetime_t decoded;
+  CHECK_EQ(rtc_decode(raw, &decoded), 1, "decode accepts what encode wrote");
+  CHECK_EQ(rtc_datetime_to_unix(&decoded), 1794903501L, "encode/decode round trip");
+
+  // Rejections.
+  uint8_t bad[RTC_REGISTER_COUNT];
+  for (int i = 0; i < RTC_REGISTER_COUNT; i++) {
+    bad[i] = raw[i];
+  }
+  bad[0] |= 0x80;
+  CHECK_EQ(rtc_decode(bad, &decoded), 0, "voltage-low flag rejected");
+  bad[0] = raw[0];
+  bad[1] = 0x6A;
+  CHECK_EQ(rtc_decode(bad, &decoded), 0, "invalid BCD rejected");
+  bad[1] = raw[1];
+  bad[5] = 0x13;
+  CHECK_EQ(rtc_decode(bad, &decoded), 0, "month 13 rejected");
+
+  // Compiler date/time strings, including the space padded day.
+  CHECK_EQ(rtc_parse_build_time("Nov 17 2026", "08:18:21", &decoded), 1, "build time parses");
+  CHECK_EQ(rtc_datetime_to_unix(&decoded), 1794903501L, "build time value");
+  CHECK_EQ(rtc_parse_build_time("Jan  7 2027", "00:00:05", &decoded), 1, "space padded day parses");
+  CHECK_EQ(decoded.day, 7, "space padded day value");
+  CHECK_EQ(rtc_parse_build_time("Xyz 17 2026", "08:18:21", &decoded), 0, "bad month rejected");
+}
+
 int main(void) {
   test_init_values();
   test_tick_is_additive();
@@ -444,6 +509,7 @@ int main(void) {
   test_storage_record();
   test_save_timing();
   test_chsc6x_parse();
+  test_rtc_time();
 
   printf("\n%d check(s) failed\n", failures);
   return failures == 0 ? 0 : 1;

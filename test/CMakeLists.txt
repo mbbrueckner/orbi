@@ -10,12 +10,14 @@ add_executable(orbi_test
     ../components/pet_core/tick_scheduler.c
     ../components/storage/storage_record.c
     ../components/input/chsc6x_parse.c
+    ../components/rtc/rtc_time.c
 )
 
 target_include_directories(orbi_test PRIVATE
     ../components/pet_core
     ../components/storage
     ../components/input
+    ../components/rtc
 )
 
 target_compile_options(orbi_test PRIVATE -Wall -Wextra -Wconversion)
