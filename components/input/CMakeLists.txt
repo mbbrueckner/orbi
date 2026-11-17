@@ -1,5 +1,5 @@
 idf_component_register(
-    SRCS "input_touch.c"
+    SRCS "input_touch.c" "chsc6x_parse.c"
     INCLUDE_DIRS "."
-    REQUIRES driver lvgl
+    REQUIRES esp_driver_i2c esp_timer lvgl
 )
