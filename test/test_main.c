@@ -223,6 +223,20 @@ static void demo_interactions(void) {
   print_state("played", &pet);
 }
 
+static void test_feed_is_one_bite(void) {
+  printf("test_feed_is_one_bite\n");
+  pet_state_t pet;
+  pet_init(&pet);
+  pet.hunger = 50;
+
+  pet_feed(&pet);
+  CHECK_EQ(pet.hunger, 42, "one bite lowers hunger by 8");
+  for (int i = 0; i < 10; i++) {
+    pet_feed(&pet);
+  }
+  CHECK_EQ(pet.hunger, 0, "hunger does not go below 0");
+}
+
 static void test_sleeping_pet_ignores_feed_and_play(void) {
   printf("test_sleeping_pet_ignores_feed_and_play\n");
   pet_state_t pet;
@@ -518,6 +532,7 @@ int main(void) {
   test_long_absence();
   test_sleep();
   test_sleep_button_is_not_free();
+  test_feed_is_one_bite();
   test_sleeping_pet_ignores_feed_and_play();
   test_scheduler();
   test_storage_record();

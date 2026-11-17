@@ -29,6 +29,7 @@ void pet_init(pet_state_t* state);
 
 void pet_tick(pet_state_t* state, uint32_t elapsed_seconds);
 
+/** One bite of food: lowers hunger by 8. An apple has four bites. Does nothing while asleep. */
 void pet_feed(pet_state_t* state);
 
 void pet_play(pet_state_t* state);

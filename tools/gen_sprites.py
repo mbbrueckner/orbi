@@ -4,7 +4,7 @@
 Usage (from the project root):
     python3 tools/gen_sprites.py
 
-Reads  components/ui/assets/sprites/raccoon_<set>_<frame>.png
+Reads  components/ui/assets/sprites/<set>_<frame>.png
 Writes components/ui/sprites_data.c
 
 The pixel format matches sdkconfig.defaults (16 bit colour, swapped bytes):
@@ -23,8 +23,18 @@ ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "components/ui/assets/sprites"
 OUT = ROOT / "components/ui/sprites_data.c"
 
-# Order must match sprite_set_t in sprites.h.
-SETS = ["happy", "hungry", "tired", "sad", "sleep"]
+# (set name, file prefix, sprite size). Order must match sprite_set_t in
+# sprites.h.
+SETS = [
+    ("happy", "raccoon_happy", 80),
+    ("hungry", "raccoon_hungry", 80),
+    ("tired", "raccoon_tired", 80),
+    ("sad", "raccoon_sad", 80),
+    ("sleep", "raccoon_sleep", 80),
+    ("ball", "ball", 20),
+    ("apple", "apple", 20),
+    ("lamp", "lamp", 32),
+]
 
 
 def pixel_bytes(img):
@@ -35,10 +45,10 @@ def pixel_bytes(img):
     return out
 
 
-def frames_of(name):
+def frames_of(prefix):
     files = []
-    for f in SRC.glob(f"raccoon_{name}_*.png"):
-        m = re.fullmatch(rf"raccoon_{name}_(\d+)\.png", f.name)
+    for f in SRC.glob(f"{prefix}_*.png"):
+        m = re.fullmatch(rf"{prefix}_(\d+)\.png", f.name)
         if m:
             files.append((int(m.group(1)), f))
     return [f for _, f in sorted(files)]
@@ -52,17 +62,17 @@ def main():
         "",
     ]
     tables = []
-    for name in SETS:
-        frames = frames_of(name)
+    for name, prefix, size in SETS:
+        frames = frames_of(prefix)
         if not frames:
             sys.exit(f"no frames found for set '{name}'")
         names = []
         for i, f in enumerate(frames, start=1):
             img = Image.open(f)
-            if img.size != (SPRITE_SIZE := 80, 80):
-                sys.exit(f"{f.name}: expected 80x80, got {img.size}")
+            if img.size != (size, size):
+                sys.exit(f"{f.name}: expected {size}x{size}, got {img.size}")
             data = pixel_bytes(img)
-            sym = f"raccoon_{name}_{i}"
+            sym = f"{prefix}_{i}"
             lines.append(f"static const uint8_t {sym}_map[] = {{")
             for k in range(0, len(data), 24):
                 chunk = ", ".join(f"0x{b:02X}" for b in data[k:k + 24])

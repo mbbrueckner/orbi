@@ -64,7 +64,7 @@ void pet_feed(pet_state_t* state) {
   if (state->sleeping) {
     return;
   }
-  state->hunger = clamp_stat((int)state->hunger - 30);
+  state->hunger = clamp_stat((int)state->hunger - 8);
 }
 
 void pet_play(pet_state_t* state) {
