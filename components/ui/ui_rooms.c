@@ -281,6 +281,7 @@ static lv_obj_t* stat_values[STAT_COUNT];
 
 static lv_obj_t* status_mood;
 static lv_obj_t* status_age;
+static char status_note[32];
 
 static void create_living_room(void) {
   lv_obj_t* page = make_page(ROOM_LIVING, "Wohnzimmer", lv_color_make(0x18, 0x18, 0x20));
@@ -317,7 +318,8 @@ static void create_living_room(void) {
   status_age = lv_label_create(page);
   lv_label_set_text(status_age, "");
   lv_obj_set_style_text_color(status_age, lv_color_make(0xA0, 0xA0, 0xA0), 0);
-  lv_obj_align(status_age, LV_ALIGN_TOP_MID, 0, 204);
+  lv_obj_set_style_text_align(status_age, LV_TEXT_ALIGN_CENTER, 0);
+  lv_obj_align(status_age, LV_ALIGN_TOP_MID, 0, 200);
 
   rooms[ROOM_LIVING].pet = pet;
   rooms[ROOM_LIVING].mood = status_mood;
@@ -518,6 +520,10 @@ void ui_rooms_create(ui_action_cb_t action_cb) {
   layout_rooms();
 }
 
+void ui_rooms_set_note(const char* text) {
+  lv_snprintf(status_note, sizeof(status_note), "%s", text);
+}
+
 void ui_rooms_update(const pet_state_t* state) {
   static const char* const mood_names[] = {"happy", "hungry", "tired", "sad"};
 
@@ -542,9 +548,11 @@ void ui_rooms_update(const pet_state_t* state) {
   }
 
   lv_label_set_text_fmt(status_age,
-                        "Alter: %dh %02dm",
+                        "Alter: %dh %02dm%s%s",
                         (int)(state->age_seconds / 3600),
-                        (int)(state->age_seconds % 3600 / 60));
+                        (int)(state->age_seconds % 3600 / 60),
+                        status_note[0] != '\0' ? "\n" : "",
+                        status_note);
 
   lv_label_set_text(sleep_button_label,
                     state->sleeping ? "Aufwachen" : "Schlafen");

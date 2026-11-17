@@ -54,6 +54,14 @@ void ui_render_lock(void);
 void ui_render_unlock(void);
 
 /**
+ * @brief Sets a short note under the age in the living room (e.g. how the
+ *        last boot went). Shown on the next ui_render_update().
+ *
+ * @param text At most 31 characters. Copied.
+ */
+void ui_render_set_note(const char* text);
+
+/**
  * @brief Redraws the screen to match the current state.
  *
  * Refreshes the status bars, the mood text and the sleeping look.
