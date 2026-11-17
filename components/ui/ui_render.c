@@ -12,8 +12,10 @@
 
 #include "ui_render.h"
 
-#include "driver/gpio.h"
+#include "driver/ledc.h"
 #include "driver/spi_master.h"
+#include <stdbool.h>
+
 #include "esp_heap_caps.h"
 #include "esp_lcd_gc9a01.h"
 #include "esp_lcd_panel_io.h"
@@ -38,6 +40,13 @@
 #define LCD_HEIGHT 240
 /** Rows per LVGL draw buffer; two buffers of this size are allocated. */
 #define LVGL_BUF_ROWS 20
+/** Without touch for this long, the backlight dims. */
+#define DIM_AFTER_MS 60000
+/** Brightness in percent when dimmed. Never 0: the screen is never off. */
+#define BACKLIGHT_DIM_PERCENT 15
+#define BACKLIGHT_FULL_PERCENT 100
+/** Brightness change per LVGL loop pass, makes dimming a short fade. */
+#define BACKLIGHT_STEP_PERCENT 4
 /** LVGL tick period in milliseconds. */
 #define LVGL_TICK_MS 2
 
@@ -47,6 +56,7 @@ static esp_lcd_panel_handle_t panel;
 static lv_disp_draw_buf_t draw_buf;
 static lv_disp_drv_t disp_drv;
 static SemaphoreHandle_t lvgl_mutex;
+static int backlight_percent = BACKLIGHT_FULL_PERCENT;
 
 /** Called by the SPI driver when a flush transfer is finished. */
 static bool on_flush_done(esp_lcd_panel_io_handle_t io,
@@ -72,12 +82,42 @@ static void tick_cb(void* arg) {
   lv_tick_inc(LVGL_TICK_MS);
 }
 
+/** Sets the backlight brightness (PWM duty) in percent. */
+static void set_backlight(int percent) {
+  uint32_t duty = (uint32_t)percent * 255 / 100;
+  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
+  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+}
+
+/** Fades the backlight towards full or dimmed, depending on touch activity. */
+static void update_backlight(bool idle) {
+  int target = idle ? BACKLIGHT_DIM_PERCENT : BACKLIGHT_FULL_PERCENT;
+  if (backlight_percent == target) {
+    return;
+  }
+  if (backlight_percent < target) {
+    backlight_percent += BACKLIGHT_STEP_PERCENT;
+    if (backlight_percent > target) {
+      backlight_percent = target;
+    }
+  } else {
+    backlight_percent -= BACKLIGHT_STEP_PERCENT;
+    if (backlight_percent < target) {
+      backlight_percent = target;
+    }
+  }
+  set_backlight(backlight_percent);
+}
+
 static void lvgl_task(void* arg) {
   (void)arg;
   while (1) {
     xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
     uint32_t wait_ms = lv_timer_handler();
+    bool idle = lv_disp_get_inactive_time(NULL) > DIM_AFTER_MS;
     xSemaphoreGive(lvgl_mutex);
+
+    update_backlight(idle);
 
     if (wait_ms < 5) {
       wait_ms = 5;
@@ -123,12 +163,24 @@ static void init_panel(void) {
   ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-  gpio_config_t backlight = {
-      .pin_bit_mask = 1ULL << PIN_LCD_BACKLIGHT,
-      .mode = GPIO_MODE_OUTPUT,
+  // Backlight on a PWM channel so that it can be dimmed.
+  ledc_timer_config_t timer = {
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .duty_resolution = LEDC_TIMER_8_BIT,
+      .timer_num = LEDC_TIMER_0,
+      .freq_hz = 5000,
+      .clk_cfg = LEDC_AUTO_CLK,
   };
-  ESP_ERROR_CHECK(gpio_config(&backlight));
-  ESP_ERROR_CHECK(gpio_set_level(PIN_LCD_BACKLIGHT, 1));
+  ESP_ERROR_CHECK(ledc_timer_config(&timer));
+  ledc_channel_config_t channel = {
+      .gpio_num = PIN_LCD_BACKLIGHT,
+      .speed_mode = LEDC_LOW_SPEED_MODE,
+      .channel = LEDC_CHANNEL_0,
+      .timer_sel = LEDC_TIMER_0,
+      .duty = 255,
+  };
+  ESP_ERROR_CHECK(ledc_channel_config(&channel));
+  set_backlight(BACKLIGHT_FULL_PERCENT);
 }
 
 static void init_lvgl(void) {
