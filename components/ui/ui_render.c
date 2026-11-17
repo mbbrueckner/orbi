@@ -12,7 +12,7 @@
 
 #include "ui_render.h"
 
-#include "driver/ledc.h"
+#include "driver/gpio.h"
 #include "driver/spi_master.h"
 #include <stdbool.h>
 
@@ -40,13 +40,15 @@
 #define LCD_HEIGHT 240
 /** Rows per LVGL draw buffer; two buffers of this size are allocated. */
 #define LVGL_BUF_ROWS 20
-/** Without touch for this long, the backlight dims. */
+/** Without touch for this long, the picture dims. */
 #define DIM_AFTER_MS 60000
-/** Brightness in percent when dimmed. Never 0: the screen is never off. */
-#define BACKLIGHT_DIM_PERCENT 15
-#define BACKLIGHT_FULL_PERCENT 100
-/** Brightness change per LVGL loop pass, makes dimming a short fade. */
-#define BACKLIGHT_STEP_PERCENT 4
+/**
+ * The backlight of this display cannot be regulated: PWM from 200 Hz to
+ * 5 kHz changed nothing. So dimming is a black layer over everything, with
+ * this opacity (0 to 255). Never fully black: the screen is never off.
+ */
+#define DIM_OPACITY 190
+#define DIM_FADE_MS 500
 /** LVGL tick period in milliseconds. */
 #define LVGL_TICK_MS 2
 
@@ -56,7 +58,7 @@ static esp_lcd_panel_handle_t panel;
 static lv_disp_draw_buf_t draw_buf;
 static lv_disp_drv_t disp_drv;
 static SemaphoreHandle_t lvgl_mutex;
-static int backlight_percent = BACKLIGHT_FULL_PERCENT;
+static lv_obj_t* dim_layer;
 
 /** Called by the SPI driver when a flush transfer is finished. */
 static bool on_flush_done(esp_lcd_panel_io_handle_t io,
@@ -82,42 +84,48 @@ static void tick_cb(void* arg) {
   lv_tick_inc(LVGL_TICK_MS);
 }
 
-/** Sets the backlight brightness (PWM duty) in percent. */
-static void set_backlight(int percent) {
-  uint32_t duty = (uint32_t)percent * 255 / 100;
-  ledc_set_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0, duty);
-  ledc_update_duty(LEDC_LOW_SPEED_MODE, LEDC_CHANNEL_0);
+static void dim_opacity_cb(void* var, int32_t opacity) {
+  lv_obj_set_style_bg_opa((lv_obj_t*)var, (lv_opa_t)opacity, 0);
 }
 
-/** Fades the backlight towards full or dimmed, depending on touch activity. */
-static void update_backlight(bool idle) {
-  int target = idle ? BACKLIGHT_DIM_PERCENT : BACKLIGHT_FULL_PERCENT;
-  if (backlight_percent == target) {
-    return;
-  }
-  if (backlight_percent < target) {
-    backlight_percent += BACKLIGHT_STEP_PERCENT;
-    if (backlight_percent > target) {
-      backlight_percent = target;
-    }
-  } else {
-    backlight_percent -= BACKLIGHT_STEP_PERCENT;
-    if (backlight_percent < target) {
-      backlight_percent = target;
-    }
-  }
-  set_backlight(backlight_percent);
+/** Fades the dim layer in or out. Call with the LVGL lock held. */
+static void set_dimmed(bool dimmed) {
+  lv_anim_del(dim_layer, dim_opacity_cb);
+
+  lv_anim_t anim;
+  lv_anim_init(&anim);
+  lv_anim_set_var(&anim, dim_layer);
+  lv_anim_set_exec_cb(&anim, dim_opacity_cb);
+  lv_anim_set_values(
+      &anim, lv_obj_get_style_bg_opa(dim_layer, 0), dimmed ? DIM_OPACITY : 0);
+  lv_anim_set_time(&anim, DIM_FADE_MS);
+  lv_anim_start(&anim);
+}
+
+/** Creates the black layer on top of everything; touches pass through it. */
+static void create_dim_layer(void) {
+  dim_layer = lv_obj_create(lv_layer_top());
+  lv_obj_set_size(dim_layer, LCD_WIDTH, LCD_HEIGHT);
+  lv_obj_set_pos(dim_layer, 0, 0);
+  lv_obj_set_style_radius(dim_layer, 0, 0);
+  lv_obj_set_style_border_width(dim_layer, 0, 0);
+  lv_obj_set_style_bg_color(dim_layer, lv_color_black(), 0);
+  lv_obj_set_style_bg_opa(dim_layer, LV_OPA_TRANSP, 0);
+  lv_obj_clear_flag(dim_layer, LV_OBJ_FLAG_CLICKABLE | LV_OBJ_FLAG_SCROLLABLE);
 }
 
 static void lvgl_task(void* arg) {
   (void)arg;
+  bool dimmed = false;
   while (1) {
     xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
     uint32_t wait_ms = lv_timer_handler();
     bool idle = lv_disp_get_inactive_time(NULL) > DIM_AFTER_MS;
+    if (idle != dimmed) {
+      dimmed = idle;
+      set_dimmed(dimmed);
+    }
     xSemaphoreGive(lvgl_mutex);
-
-    update_backlight(idle);
 
     if (wait_ms < 5) {
       wait_ms = 5;
@@ -125,7 +133,8 @@ static void lvgl_task(void* arg) {
     if (wait_ms > 30) {
       wait_ms = 30;  // LV_NO_TIMER_READY and friends must not sleep forever
     }
-    vTaskDelay(pdMS_TO_TICKS(wait_ms));
+    TickType_t delay = pdMS_TO_TICKS(wait_ms);
+    vTaskDelay(delay > 0 ? delay : 1);
   }
 }
 
@@ -163,24 +172,13 @@ static void init_panel(void) {
   ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
-  // Backlight on a PWM channel so that it can be dimmed.
-  ledc_timer_config_t timer = {
-      .speed_mode = LEDC_LOW_SPEED_MODE,
-      .duty_resolution = LEDC_TIMER_8_BIT,
-      .timer_num = LEDC_TIMER_0,
-      .freq_hz = 5000,
-      .clk_cfg = LEDC_AUTO_CLK,
+  // The backlight is simply on (see DIM_OPACITY for why there is no PWM).
+  gpio_config_t backlight = {
+      .pin_bit_mask = 1ULL << PIN_LCD_BACKLIGHT,
+      .mode = GPIO_MODE_OUTPUT,
   };
-  ESP_ERROR_CHECK(ledc_timer_config(&timer));
-  ledc_channel_config_t channel = {
-      .gpio_num = PIN_LCD_BACKLIGHT,
-      .speed_mode = LEDC_LOW_SPEED_MODE,
-      .channel = LEDC_CHANNEL_0,
-      .timer_sel = LEDC_TIMER_0,
-      .duty = 255,
-  };
-  ESP_ERROR_CHECK(ledc_channel_config(&channel));
-  set_backlight(BACKLIGHT_FULL_PERCENT);
+  ESP_ERROR_CHECK(gpio_config(&backlight));
+  ESP_ERROR_CHECK(gpio_set_level(PIN_LCD_BACKLIGHT, 1));
 }
 
 static void init_lvgl(void) {
@@ -216,6 +214,7 @@ void ui_render_init(ui_action_cb_t action_cb) {
   init_lvgl();  // disp_drv must exist before the panel callback uses it
   init_panel();
   ui_rooms_create(action_cb);
+  create_dim_layer();
 
   xTaskCreate(lvgl_task, "lvgl", 6144, NULL, 2, NULL);
   ESP_LOGI(TAG, "display and LVGL initialised");
