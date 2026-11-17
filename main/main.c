@@ -6,11 +6,13 @@
 
 #include "driver/i2c_master.h"
 #include "esp_log.h"
+#include "esp_timer.h"
 #include "freertos/FreeRTOS.h"
+#include "freertos/queue.h"
 #include "freertos/task.h"
 #include "input_touch.h"
-#include "lvgl.h"
 #include "pet_state.h"
+#include "tick_scheduler.h"
 #include "ui_render.h"
 
 // TODO: include the individual modules once they exist:
@@ -21,6 +23,41 @@
 
 /** Tag prefixed to every log line from this file. */
 static const char* TAG = "orbi";
+
+/** Pet time runs this much faster than real time. 1 = real time; raise it
+ *  temporarily to see the mood change without waiting. */
+#define DEMO_SPEEDUP 1
+
+/** Player actions travel from the LVGL task to the main loop through this. */
+static QueueHandle_t action_queue;
+
+/** Called from the LVGL task: only queue the action, never touch the pet. */
+static void on_ui_action(ui_action_t action) {
+  xQueueSend(action_queue, &action, 0);
+}
+
+/** Temporary time source until the RTC is wired up. */
+static uint32_t demo_time_s(void) {
+  return (uint32_t)(esp_timer_get_time() / 1000000) * DEMO_SPEEDUP;
+}
+
+/** Applies one player action to the pet. */
+static void apply_action(pet_state_t* pet, ui_action_t action) {
+  switch (action) {
+    case UI_ACTION_FEED:
+      pet_feed(pet);
+      break;
+    case UI_ACTION_PLAY:
+      pet_play(pet);
+      break;
+    case UI_ACTION_SLEEP:
+      pet_sleep(pet, true);
+      break;
+    case UI_ACTION_WAKE:
+      pet_sleep(pet, false);
+      break;
+  }
+}
 
 /** XIAO ESP32-C6 pin D4 (GPIO22): I2C data, shared by touch and RTC. */
 #define I2C_SDA_GPIO 22
@@ -58,29 +95,23 @@ void app_main(void) {
   // 4. pet_init()
   // 5. Start main loop / tick timer
 
-  // Temporary demo: run the pet at 30x speed and show its mood.
-  ui_render_init();
-
-  // Temporary: a small dot follows the finger to check the touch mapping.
-  lv_indev_t* touch = input_touch_init(i2c_bus_init());
-  if (touch != NULL) {
-    ui_render_lock();
-    lv_obj_t* dot = lv_obj_create(lv_layer_sys());
-    lv_obj_set_size(dot, 16, 16);
-    lv_obj_set_style_radius(dot, LV_RADIUS_CIRCLE, 0);
-    lv_obj_set_style_bg_color(dot, lv_color_make(0xFF, 0x30, 0x30), 0);
-    lv_obj_set_style_border_width(dot, 0, 0);
-    lv_obj_clear_flag(dot, LV_OBJ_FLAG_SCROLLABLE);
-    lv_indev_set_cursor(touch, dot);
-    ui_render_unlock();
-  }
+  action_queue = xQueueCreate(8, sizeof(ui_action_t));
+  ui_render_init(on_ui_action);
+  input_touch_init(i2c_bus_init());
 
   pet_state_t pet;
   pet_init(&pet);
+  tick_scheduler_t scheduler;
+  tick_scheduler_init(&scheduler, demo_time_s());
+  ui_render_update(&pet);
 
   while (1) {
-    pet_tick(&pet, 30);
+    // Wake up for player actions right away, otherwise tick once a second.
+    ui_action_t action;
+    if (xQueueReceive(action_queue, &action, pdMS_TO_TICKS(1000)) == pdTRUE) {
+      apply_action(&pet, action);
+    }
+    tick_scheduler_update(&scheduler, &pet, demo_time_s());
     ui_render_update(&pet);
-    vTaskDelay(pdMS_TO_TICKS(1000));
   }
 }
