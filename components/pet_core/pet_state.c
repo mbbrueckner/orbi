@@ -61,10 +61,16 @@ void pet_tick(pet_state_t* state, uint32_t elapsed_seconds) {
 }
 
 void pet_feed(pet_state_t* state) {
+  if (state->sleeping) {
+    return;
+  }
   state->hunger = clamp_stat((int)state->hunger - 30);
 }
 
 void pet_play(pet_state_t* state) {
+  if (state->sleeping) {
+    return;
+  }
   state->happiness = clamp_stat((int)state->happiness + 20);
   state->energy = clamp_stat((int)state->energy - 10);
 }

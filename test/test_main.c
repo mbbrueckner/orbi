@@ -223,6 +223,19 @@ static void demo_interactions(void) {
   print_state("played", &pet);
 }
 
+static void test_sleeping_pet_ignores_feed_and_play(void) {
+  printf("test_sleeping_pet_ignores_feed_and_play\n");
+  pet_state_t pet;
+  pet_init(&pet);
+  pet_sleep(&pet, true);
+
+  pet_feed(&pet);
+  pet_play(&pet);
+  CHECK_EQ(pet.hunger, 20, "feeding does nothing while asleep");
+  CHECK_EQ(pet.happiness, 80, "playing does nothing while asleep");
+  CHECK_EQ(pet.energy, 100, "playing does not cost energy while asleep");
+}
+
 /**
  * @brief Runs every test and summarises the result.
  *
@@ -505,6 +518,7 @@ int main(void) {
   test_long_absence();
   test_sleep();
   test_sleep_button_is_not_free();
+  test_sleeping_pet_ignores_feed_and_play();
   test_scheduler();
   test_storage_record();
   test_save_timing();
