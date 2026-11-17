@@ -4,11 +4,13 @@
 Usage (from the project root):
     python3 tools/gen_sprites.py
 
-Reads  components/ui/assets/sprites/<set>_<frame>.png
+Reads  components/ui/assets/sprites/<set>_<frame>.png   (sprites, with alpha)
+       components/ui/assets/rooms/<name>.png            (room backgrounds)
 Writes components/ui/sprites_data.c
 
 The pixel format matches sdkconfig.defaults (16 bit colour, swapped bytes):
-per pixel the two colour bytes (high byte first) followed by one alpha byte.
+per pixel the two colour bytes (high byte first). Sprites add one alpha byte
+per pixel, room backgrounds are opaque and have none.
 Needs Pillow (pip install pillow). The generated file is committed, so a
 normal build does not need Python.
 """
@@ -21,6 +23,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parent.parent
 SRC = ROOT / "components/ui/assets/sprites"
+ROOMS_SRC = ROOT / "components/ui/assets/rooms"
 OUT = ROOT / "components/ui/sprites_data.c"
 
 # (set name, file prefix, sprite size). Order must match sprite_set_t in
@@ -35,6 +38,18 @@ SETS = [
     ("apple", "apple", 20),
     ("lamp", "lamp", 32),
 ]
+
+
+# Room backgrounds: (name, size). Order must match room_bg_t in sprites.h.
+ROOMS = [("dining", 120), ("bedroom", 120), ("garden", 120)]
+
+
+def room_bytes(img):
+    out = bytearray()
+    for r, g, b in img.convert("RGB").getdata():
+        rgb565 = ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | (b >> 3)
+        out += bytes((rgb565 >> 8, rgb565 & 0xFF))
+    return out
 
 
 def pixel_bytes(img):
@@ -94,6 +109,35 @@ def main():
         lines += [f"  &{n}," for n in names]
         lines.append("};")
         lines.append("")
+
+    for name, size in ROOMS:
+        f = ROOMS_SRC / f"{name}.png"
+        img = Image.open(f)
+        if img.size != (size, size):
+            sys.exit(f"{f.name}: expected {size}x{size}, got {img.size}")
+        data = room_bytes(img)
+        lines.append(f"static const uint8_t room_{name}_map[] = {{")
+        for k in range(0, len(data), 24):
+            chunk = ", ".join(f"0x{b:02X}" for b in data[k:k + 24])
+            lines.append(f"  {chunk},")
+        lines.append("};")
+        lines.append(f"static const lv_img_dsc_t room_{name} = {{")
+        lines.append("  .header.cf = LV_IMG_CF_TRUE_COLOR,")
+        lines.append(f"  .header.w = {img.width},")
+        lines.append(f"  .header.h = {img.height},")
+        lines.append(f"  .data_size = {len(data)},")
+        lines.append(f"  .data = room_{name}_map,")
+        lines.append("};")
+        lines.append("")
+    lines.append("static const lv_img_dsc_t* const rooms[ROOM_BG_COUNT] = {")
+    for name, _ in ROOMS:
+        lines.append(f"  [ROOM_BG_{name.upper()}] = &room_{name},")
+    lines.append("};")
+    lines.append("")
+    lines.append("const lv_img_dsc_t* sprites_room(room_bg_t room) {")
+    lines.append("  return rooms[room];")
+    lines.append("}")
+    lines.append("")
 
     lines.append("static const struct {")
     lines.append("  const lv_img_dsc_t* const* frames;")

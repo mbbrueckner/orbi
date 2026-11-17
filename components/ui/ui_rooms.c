@@ -36,7 +36,7 @@
 /** Size at which the apple is drawn (the sprite is 20 px, shown doubled). */
 #define FOOD_SIZE 40
 #define FOOD_HOME_CENTER_X (SCREEN_SIZE / 2)
-#define FOOD_HOME_CENTER_Y 204
+#define FOOD_HOME_CENTER_Y 210
 /** Extra invisible touch area around the food, in pixels. */
 #define FOOD_TOUCH_MARGIN 14
 /** The food counts as fed when its center is this close to the pet's. */
@@ -44,7 +44,7 @@
 
 #define BALL_SIZE 40
 #define BALL_HOME_CENTER_X (SCREEN_SIZE / 2)
-#define BALL_HOME_CENTER_Y 202
+#define BALL_HOME_CENTER_Y 216
 
 enum { ROOM_LIVING, ROOM_DINING, ROOM_BEDROOM, ROOM_GARDEN, ROOM_COUNT };
 
@@ -208,8 +208,14 @@ static lv_obj_t* make_bar(lv_obj_t* parent, int width, lv_color_t color) {
   return bar;
 }
 
-/** Creates a room page with background and title (NULL for no title). */
-static lv_obj_t* make_page(int index, const char* title, lv_color_t background) {
+/**
+ * Creates a room page with background color, an optional background picture
+ * (NULL for none, drawn doubled) and a title (NULL for no title).
+ */
+static lv_obj_t* make_page(int index,
+                           const char* title,
+                           lv_color_t background,
+                           const lv_img_dsc_t* picture) {
   lv_obj_t* page = lv_obj_create(pager);
   lv_obj_set_size(page, SCREEN_SIZE, SCREEN_SIZE);
   lv_obj_set_style_radius(page, 0, 0);
@@ -219,6 +225,15 @@ static lv_obj_t* make_page(int index, const char* title, lv_color_t background) 
   lv_obj_set_style_bg_opa(page, LV_OPA_COVER, 0);
   lv_obj_clear_flag(page, LV_OBJ_FLAG_SCROLLABLE);
   lv_obj_add_flag(page, LV_OBJ_FLAG_EVENT_BUBBLE);
+
+  if (picture != NULL) {
+    lv_obj_t* bg = lv_img_create(page);
+    lv_img_set_src(bg, picture);
+    lv_img_set_antialias(bg, false);
+    lv_img_set_zoom(bg, 256 * SCREEN_SIZE / ROOM_BG_SIZE);
+    // The doubled picture is drawn around the center of its box.
+    lv_obj_set_pos(bg, (SCREEN_SIZE - ROOM_BG_SIZE) / 2, (SCREEN_SIZE - ROOM_BG_SIZE) / 2);
+  }
 
   if (title != NULL) {
     lv_obj_t* title_label = lv_label_create(page);
@@ -293,7 +308,7 @@ static lv_obj_t* status_age;
 static char status_note[32];
 
 static void create_living_room(void) {
-  lv_obj_t* page = make_page(ROOM_LIVING, "Wohnzimmer", lv_color_make(0x18, 0x18, 0x20));
+  lv_obj_t* page = make_page(ROOM_LIVING, "Wohnzimmer", lv_color_make(0x18, 0x18, 0x20), NULL);
 
   static const char* const names[STAT_COUNT] = {"Sattheit", "Energie", "Glueck"};
   const lv_color_t colors[STAT_COUNT] = {lv_color_make(0x40, 0xC0, 0x60),
@@ -451,7 +466,10 @@ static void food_event_cb(lv_event_t* e) {
 
 static void create_dining_room(void) {
   lv_obj_t* page =
-      make_page(ROOM_DINING, "Esszimmer", lv_color_make(0x2A, 0x1A, 0x10));
+      make_page(ROOM_DINING,
+                "Esszimmer",
+                lv_color_make(0x2A, 0x1A, 0x10),
+                sprites_room(ROOM_BG_DINING));
   add_pet_to_room(ROOM_DINING, lv_color_make(0x40, 0xC0, 0x60));
 
   // No event bubbling: dragging the food must not slide the carousel.
@@ -488,7 +506,10 @@ static void lamp_cb(lv_event_t* e) {
 static void create_bedroom(void) {
   // No title: the lamp hangs at the top of the room.
   lv_obj_t* page =
-      make_page(ROOM_BEDROOM, NULL, lv_color_make(0x10, 0x14, 0x30));
+      make_page(ROOM_BEDROOM,
+                NULL,
+                lv_color_make(0x10, 0x14, 0x30),
+                sprites_room(ROOM_BG_BEDROOM));
   add_pet_to_room(ROOM_BEDROOM, lv_color_make(0x50, 0x90, 0xFF));
   lv_obj_align(rooms[ROOM_BEDROOM].bar, LV_ALIGN_TOP_MID, 0, BEDROOM_BAR_Y);
 
@@ -532,10 +553,10 @@ static void create_bedroom(void) {
 #define FETCH_TOTAL_MS 2300
 
 #define BALL_FAR_X 178
-#define BALL_FAR_Y 72
+#define BALL_FAR_Y 98
 #define BALL_FAR_SIZE 20
 #define PET_FAR_X 158
-#define PET_FAR_Y 82
+#define PET_FAR_Y 90
 #define PET_FAR_SIZE 44
 #define BALL_ARC_HEIGHT 35
 
@@ -625,6 +646,41 @@ static void set_ball_bounce(bool on) {
   }
 }
 
+/*
+ * Running: there is no running sprite, so the sitting raccoon hops and tilts
+ * from side to side. One hop per half turn of the sine wave; the hop height
+ * and the tilt scale with the drawn size, so the far pet hops less.
+ */
+#define RUN_OUT_HOPS 4
+#define RUN_BACK_HOPS 5
+/** Hop height for a pet drawn at PET_SIZE, in pixels. */
+#define HOP_HEIGHT 18
+/** Tilt at the middle of a hop, in tenths of a degree. */
+#define RUN_TILT 50
+
+/** Lift (pixels) and tilt (0.1 degrees) of the running pet at u (permille). */
+static void run_pose(int32_t u, int hops, int size, int32_t* lift, int32_t* tilt) {
+  int32_t phase = hops * 180 * u / 1000;  // degrees of the sine wave
+  int32_t wave = lv_trigo_sin((int16_t)phase);
+  *lift = (wave < 0 ? -wave : wave) * HOP_HEIGHT / 32768 * size / PET_SIZE;
+  *tilt = wave * RUN_TILT / 32768;
+}
+
+/**
+ * The ball in the pet's mouth. The mouth sits left of and a bit below the
+ * center of the sprite (pixel 25, 35 of 80), scaled with the drawn size.
+ */
+static void place_ball_in_mouth(int pet_x, int pet_y, int pet_size) {
+  int ball_size = pet_size / 8;  // 20 px for the full-size pet
+  if (ball_size < 10) {
+    ball_size = 10;
+  }
+  place_ball(garden_ball,
+             pet_x + (25 - 40) * pet_size / SPRITE_SIZE,
+             pet_y + (35 - 40) * pet_size / SPRITE_SIZE,
+             ball_size);
+}
+
 static void fetch_step(void* var, int32_t t) {
   (void)var;
 
@@ -650,29 +706,35 @@ static void fetch_step(void* var, int32_t t) {
                 (FETCH_RUN_OUT_END_MS - FETCH_THROW_END_MS);
     show_ball_frame(1);
     place_ball(garden_ball, BALL_FAR_X, BALL_FAR_Y, BALL_FAR_SIZE);
+    int32_t size = lerp(PET_SIZE, PET_FAR_SIZE, u);
+    int32_t lift, tilt;
+    run_pose(u, RUN_OUT_HOPS, size, &lift, &tilt);
     place_pet(garden_pet,
               lerp(PET_CENTER_X, PET_FAR_X, u),
-              lerp(PET_CENTER_Y, PET_FAR_Y, u),
-              lerp(PET_SIZE, PET_FAR_SIZE, u));
+              lerp(PET_CENTER_Y, PET_FAR_Y, u) - lift,
+              size);
+    lv_img_set_angle(garden_pet, tilt);
   } else {
     int32_t u = (t - FETCH_RUN_OUT_END_MS) * 1000 /
                 (FETCH_TOTAL_MS - FETCH_RUN_OUT_END_MS);
     int32_t pet_size = lerp(PET_FAR_SIZE, PET_SIZE, u);
     int32_t pet_x = lerp(PET_FAR_X, PET_CENTER_X, u);
     int32_t pet_y = lerp(PET_FAR_Y, PET_CENTER_Y, u);
+    int32_t lift, tilt;
+    run_pose(u, RUN_BACK_HOPS, pet_size, &lift, &tilt);
+    pet_y -= lift;
     place_pet(garden_pet, pet_x, pet_y, pet_size);
-    // The ball is carried at the pet's feet.
+    lv_img_set_angle(garden_pet, tilt);
+    // The ball is carried in the pet's mouth.
     show_ball_frame(1);
-    place_ball(garden_ball,
-               pet_x,
-               pet_y + pet_size / 2,
-               lerp(BALL_FAR_SIZE, BALL_SIZE / 2, u));
+    place_ball_in_mouth(pet_x, pet_y, pet_size);
   }
 }
 
 static void fetch_done(lv_anim_t* anim) {
   (void)anim;
   place_pet(garden_pet, PET_CENTER_X, PET_CENTER_Y, PET_SIZE);
+  lv_img_set_angle(garden_pet, 0);
   place_ball(garden_ball, BALL_HOME_CENTER_X, BALL_HOME_CENTER_Y, BALL_SIZE);
   fetching = false;
   set_ball_bounce(!pet_sleeping);
@@ -700,7 +762,10 @@ static void ball_event_cb(lv_event_t* e) {
 
 static void create_garden(void) {
   lv_obj_t* page =
-      make_page(ROOM_GARDEN, "Garten", lv_color_make(0x10, 0x28, 0x1C));
+      make_page(ROOM_GARDEN,
+                "Garten",
+                lv_color_make(0x10, 0x28, 0x1C),
+                sprites_room(ROOM_BG_GARDEN));
   add_pet_to_room(ROOM_GARDEN, lv_color_make(0xF0, 0xD0, 0x40));
   garden_pet = rooms[ROOM_GARDEN].pet;
 

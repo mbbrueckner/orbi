@@ -36,6 +36,19 @@ typedef enum {
   SPRITE_SET_COUNT
 } sprite_set_t;
 
+/** Room backgrounds, drawn at 120 px and shown doubled. */
+#define ROOM_BG_SIZE 120
+
+typedef enum {
+  ROOM_BG_DINING,
+  ROOM_BG_BEDROOM,
+  ROOM_BG_GARDEN,
+  ROOM_BG_COUNT
+} room_bg_t;
+
+/** Background picture of a room (opaque). */
+const lv_img_dsc_t* sprites_room(room_bg_t room);
+
 /** Number of animation frames in a set. */
 int sprites_frame_count(sprite_set_t set);
 
