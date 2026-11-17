@@ -27,11 +27,10 @@
 #define SWIPE_THRESHOLD 60
 #define SLIDE_TIME_MS 200
 
-#define PET_SIZE 80
-#define PET_X ((SCREEN_SIZE - PET_SIZE) / 2)
-#define PET_Y 75
-#define PET_CENTER_X (PET_X + PET_SIZE / 2)
-#define PET_CENTER_Y (PET_Y + PET_SIZE / 2)
+/** Size at which the pet is drawn in the pet rooms (the sprite is 80 px). */
+#define PET_SIZE 160
+#define PET_CENTER_X (SCREEN_SIZE / 2)
+#define PET_CENTER_Y 120
 
 #define FOOD_SIZE 36
 #define FOOD_HOME_X ((SCREEN_SIZE - FOOD_SIZE) / 2)
@@ -242,20 +241,29 @@ static lv_obj_t* make_page(int index, const char* title, lv_color_t background) 
 }
 
 /**
+ * Scales a pet image. Whole multiples of the sprite size are drawn without
+ * smoothing, so pixel art stays sharp; other sizes are smoothed.
+ */
+static void set_pet_size(lv_obj_t* pet, int size) {
+  lv_img_set_antialias(pet, size % SPRITE_SIZE != 0);
+  lv_img_set_zoom(pet, 256 * size / SPRITE_SIZE);
+}
+
+/**
  * Creates a pet image. The object keeps the sprite size (80 px) and is scaled
  * around its center, so @p size only changes how large it is drawn.
  */
 static lv_obj_t* make_pet(lv_obj_t* parent, int size) {
   lv_obj_t* pet = lv_img_create(parent);
   lv_img_set_src(pet, sprites_get(SPRITE_HAPPY, 0));
-  lv_img_set_zoom(pet, 256 * size / SPRITE_SIZE);
+  set_pet_size(pet, size);
   return pet;
 }
 
 /** Moves and scales a pet image so that it is drawn around a center point. */
 static void place_pet(lv_obj_t* pet, int center_x, int center_y, int size) {
   lv_obj_set_pos(pet, center_x - SPRITE_SIZE / 2, center_y - SPRITE_SIZE / 2);
-  lv_img_set_zoom(pet, 256 * size / SPRITE_SIZE);
+  set_pet_size(pet, size);
 }
 
 /** Adds bar, pet and mood text to a pet room. */
@@ -266,12 +274,14 @@ static void add_pet_to_room(int index, lv_color_t bar_color) {
   lv_obj_align(bar, LV_ALIGN_TOP_MID, 0, 46);
 
   lv_obj_t* pet = make_pet(page, PET_SIZE);
-  lv_obj_set_pos(pet, PET_X, PET_Y);
+  place_pet(pet, PET_CENTER_X, PET_CENTER_Y, PET_SIZE);
 
   lv_obj_t* mood = lv_label_create(page);
   lv_label_set_text(mood, "");
   lv_obj_set_style_text_color(mood, lv_color_make(0xFF, 0xB0, 0x40), 0);
-  lv_obj_align(mood, LV_ALIGN_TOP_MID, 0, 164);
+  lv_obj_align(mood, LV_ALIGN_TOP_MID, 0, 172);
+  // The sprite shows the mood, the text only lives on the status page.
+  lv_obj_add_flag(mood, LV_OBJ_FLAG_HIDDEN);
 
   rooms[index].pet = pet;
   rooms[index].mood = mood;
@@ -355,7 +365,7 @@ static void food_event_cb(lv_event_t* e) {
     case LV_EVENT_PRESS_LOST: {
       int dx = lv_obj_get_x(food) + FOOD_SIZE / 2 - PET_CENTER_X;
       int dy = lv_obj_get_y(food) + FOOD_SIZE / 2 - PET_CENTER_Y;
-      if (dx * dx + dy * dy < FEED_RADIUS * FEED_RADIUS) {
+      if (!pet_sleeping && dx * dx + dy * dy < FEED_RADIUS * FEED_RADIUS) {
         send_action(UI_ACTION_FEED);
       }
       lv_obj_set_pos(food, FOOD_HOME_X, FOOD_HOME_Y);
@@ -479,7 +489,7 @@ static void fetch_done(lv_anim_t* anim) {
 
 static void ball_event_cb(lv_event_t* e) {
   (void)e;
-  if (fetching || tap_blocked()) {
+  if (fetching || pet_sleeping || tap_blocked()) {
     return;
   }
   fetching = true;
