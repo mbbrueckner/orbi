@@ -30,7 +30,7 @@ static const char* TAG = "orbi";
  * The saved time is in the same scale, so keep it unchanged between a save and
  * the next boot (after changing it, erase the flash for a fresh start).
  */
-#define TIME_SPEEDUP 60
+#define TIME_SPEEDUP 1
 
 /**
  * Pet time counts from this moment (2026-01-01), so the sped-up seconds still
