@@ -25,6 +25,7 @@
 #include "freertos/semphr.h"
 #include "freertos/task.h"
 #include "lvgl.h"
+#include "ui_rooms.h"
 
 #define LCD_HOST SPI2_HOST
 #define PIN_LCD_SCK 19
@@ -46,7 +47,6 @@ static esp_lcd_panel_handle_t panel;
 static lv_disp_draw_buf_t draw_buf;
 static lv_disp_drv_t disp_drv;
 static SemaphoreHandle_t lvgl_mutex;
-static lv_obj_t* mood_label;
 
 /** Called by the SPI driver when a flush transfer is finished. */
 static bool on_flush_done(esp_lcd_panel_io_handle_t io,
@@ -117,8 +117,10 @@ static void init_panel(void) {
   ESP_ERROR_CHECK(esp_lcd_panel_reset(panel));
   ESP_ERROR_CHECK(esp_lcd_panel_init(panel));
   ESP_ERROR_CHECK(esp_lcd_panel_invert_color(panel, true));
-  // The panel is mounted mirrored on the XIAO, undo the horizontal flip.
-  ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, false));
+  // Rotate the picture to match how the display sits in the case.
+  // input_touch.c applies the same rotation to the touch position.
+  ESP_ERROR_CHECK(esp_lcd_panel_swap_xy(panel, true));
+  ESP_ERROR_CHECK(esp_lcd_panel_mirror(panel, true, true));
   ESP_ERROR_CHECK(esp_lcd_panel_disp_on_off(panel, true));
 
   gpio_config_t backlight = {
@@ -155,30 +157,13 @@ static void init_lvgl(void) {
       esp_timer_start_periodic(tick_timer, LVGL_TICK_MS * 1000));
 }
 
-static void create_demo_widgets(void) {
-  lv_obj_t* screen = lv_scr_act();
-  lv_obj_set_style_bg_color(screen, lv_color_black(), 0);
-
-  lv_obj_t* title = lv_label_create(screen);
-  lv_label_set_text(title, "orbi");
-  lv_obj_set_style_text_color(title, lv_color_white(), 0);
-  lv_obj_set_style_text_font(title, &lv_font_montserrat_28, 0);
-  lv_obj_align(title, LV_ALIGN_CENTER, 0, -30);
-
-  mood_label = lv_label_create(screen);
-  lv_label_set_text(mood_label, "...");
-  lv_obj_set_style_text_color(mood_label, lv_color_make(0xFF, 0xB0, 0x40), 0);
-  lv_obj_set_style_text_font(mood_label, &lv_font_montserrat_28, 0);
-  lv_obj_align(mood_label, LV_ALIGN_CENTER, 0, 30);
-}
-
-void ui_render_init(void) {
+void ui_render_init(ui_action_cb_t action_cb) {
   lvgl_mutex = xSemaphoreCreateMutex();
   assert(lvgl_mutex != NULL);
 
   init_lvgl();  // disp_drv must exist before the panel callback uses it
   init_panel();
-  create_demo_widgets();
+  ui_rooms_create(action_cb);
 
   xTaskCreate(lvgl_task, "lvgl", 6144, NULL, 2, NULL);
   ESP_LOGI(TAG, "display and LVGL initialised");
@@ -189,9 +174,7 @@ void ui_render_lock(void) { xSemaphoreTake(lvgl_mutex, portMAX_DELAY); }
 void ui_render_unlock(void) { xSemaphoreGive(lvgl_mutex); }
 
 void ui_render_update(const pet_state_t* state) {
-  static const char* const mood_names[] = {"happy", "hungry", "tired", "sad"};
-
   xSemaphoreTake(lvgl_mutex, portMAX_DELAY);
-  lv_label_set_text(mood_label, mood_names[pet_get_mood(state)]);
+  ui_rooms_update(state);
   xSemaphoreGive(lvgl_mutex);
 }

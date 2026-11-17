@@ -14,15 +14,35 @@
 extern "C" {
 #endif
 
+/** Things the player can do in the UI. */
+typedef enum {
+  UI_ACTION_FEED,  /**< Food was dropped on the pet. */
+  UI_ACTION_PLAY,  /**< The ball was tapped. */
+  UI_ACTION_SLEEP, /**< Send the pet to sleep. */
+  UI_ACTION_WAKE,  /**< Wake the pet up. */
+} ui_action_t;
+
+/**
+ * @brief Receives player actions.
+ *
+ * Called from the LVGL task with the LVGL lock held, so it must return
+ * quickly and must not call into LVGL. Hand the action over to another task,
+ * e.g. through a queue.
+ */
+typedef void (*ui_action_cb_t)(ui_action_t action);
+
 /**
  * @brief Brings up the display and LVGL.
  *
  * Call once at startup, before any call to ui_render_update().
  *
  * Sets up the SPI bus, the GC9A01 panel and the backlight, initialises LVGL
- * and starts the task that drives it. Currently shows demo widgets only.
+ * and starts the task that drives it, then builds the rooms.
+ *
+ * @param action_cb Called when the player feeds, plays or puts the pet to
+ *        sleep. May be NULL.
  */
-void ui_render_init(void);
+void ui_render_init(ui_action_cb_t action_cb);
 
 /**
  * @brief Takes the LVGL lock. LVGL is not thread safe, so every LVGL call
@@ -36,7 +56,7 @@ void ui_render_unlock(void);
 /**
  * @brief Redraws the screen to match the current state.
  *
- * Picks the sprite from pet_get_mood() and refreshes the status bars.
+ * Refreshes the status bars, the mood text and the sleeping look.
  *
  * @param state State to render. Not modified.
  */
