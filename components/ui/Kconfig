@@ -1,0 +1,15 @@
+menu "orbi"
+
+    choice ORBI_UI_LANGUAGE
+        prompt "Display language"
+        default ORBI_UI_LANGUAGE_DE
+        help
+            Language of the room titles and the pet status on the display.
+
+        config ORBI_UI_LANGUAGE_DE
+            bool "German"
+        config ORBI_UI_LANGUAGE_EN
+            bool "English"
+    endchoice
+
+endmenu

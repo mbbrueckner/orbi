@@ -19,6 +19,7 @@
 
 #include "lvgl.h"
 #include "sprites.h"
+#include "ui_text.h"
 
 #define SCREEN_SIZE 240
 
@@ -399,7 +400,7 @@ static lv_obj_t* status_age;
 
 static void create_living_room(void) {
   lv_obj_t* page = make_page(ROOM_LIVING,
-                             "Wohnzimmer",
+                             TEXT_ROOM_LIVING,
                              lv_color_make(0x18, 0x18, 0x20),
                              sprites_room(ROOM_BG_LIVING));
 
@@ -579,7 +580,7 @@ static void food_event_cb(lv_event_t* e) {
 static void create_dining_room(void) {
   lv_obj_t* page =
       make_page(ROOM_DINING,
-                "Esszimmer",
+                TEXT_ROOM_DINING,
                 lv_color_make(0x2A, 0x1A, 0x10),
                 sprites_room(ROOM_BG_DINING));
   add_pet_to_room(ROOM_DINING, lv_color_make(0x40, 0xC0, 0x60), 100);
@@ -655,7 +656,7 @@ static void create_bedroom(void) {
   lv_obj_add_event_cb(lamp, lamp_cb, LV_EVENT_CLICKED, NULL);
 
   lv_obj_t* title = lv_label_create(page);
-  lv_label_set_text(title, "Schlafzimmer");
+  lv_label_set_text(title, TEXT_ROOM_BEDROOM);
   lv_obj_set_style_text_color(title, lv_color_white(), 0);
   lv_obj_set_style_text_font(title, &lv_font_unscii_8, 0);
   lv_obj_align(title, LV_ALIGN_TOP_MID, 0, BEDROOM_TITLE_Y);
@@ -888,7 +889,7 @@ static void ball_event_cb(lv_event_t* e) {
 static void create_garden(void) {
   lv_obj_t* page =
       make_page(ROOM_GARDEN,
-                "Garten",
+                TEXT_ROOM_GARDEN,
                 lv_color_make(0x10, 0x28, 0x1C),
                 sprites_room(ROOM_BG_GARDEN));
   add_pet_to_room(ROOM_GARDEN, lv_color_make(0xF0, 0xD0, 0x40), 100);
@@ -948,7 +949,8 @@ void ui_rooms_create(ui_action_cb_t action_cb) {
 }
 
 void ui_rooms_update(const pet_state_t* state) {
-  static const char* const mood_names[] = {"froehlich", "hungrig", "muede", "traurig"};
+  static const char* const mood_names[] = {
+      TEXT_MOOD_HAPPY, TEXT_MOOD_HUNGRY, TEXT_MOOD_TIRED, TEXT_MOOD_SAD};
 
   pet_sleeping = state->sleeping;
 
@@ -962,7 +964,7 @@ void ui_rooms_update(const pet_state_t* state) {
   bar_set_value(rooms[ROOM_BEDROOM].bar, values[STAT_ENERGY]);
   bar_set_value(rooms[ROOM_GARDEN].bar, values[STAT_HAPPINESS]);
 
-  const char* text = state->sleeping ? "schlaeft" : mood_names[pet_get_mood(state)];
+  const char* text = state->sleeping ? TEXT_SLEEPING : mood_names[pet_get_mood(state)];
   for (int i = 0; i < ROOM_COUNT; i++) {
     lv_label_set_text(rooms[i].mood, text);
   }
@@ -973,7 +975,7 @@ void ui_rooms_update(const pet_state_t* state) {
   show_sprite_frame();
 
   lv_label_set_text_fmt(status_age,
-                        "Alter: %dh %02dm",
+                        TEXT_AGE_FMT,
                         (int)(state->age_seconds / 3600),
                         (int)(state->age_seconds % 3600 / 60));
 
